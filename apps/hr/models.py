@@ -89,7 +89,7 @@ class Certification(TenantAwareModel):
     issued_on = models.DateField(_("Issued On"), null=True, blank=True)
     expires_on = models.DateField(_("Expires On"), null=True, blank=True)
     credential_id = models.CharField(_("Credential ID"), max_length=100, blank=True)
-    document = models.FileField(_("Certificate File"), upload_to="certifications/%Y/%m/", null=True, blank=True)
+    document_url = models.CharField(_("Certificate File URL"), max_length=500, blank=True)
 
     class Meta:
         verbose_name = _("Certification")
@@ -243,7 +243,7 @@ class JobApplication(TenantAwareModel):
     applicant_name = models.CharField(_("Applicant Name"), max_length=200)
     applicant_email = models.EmailField(_("Applicant Email"))
     cover_letter = models.TextField(_("Cover Letter"), blank=True)
-    resume = models.FileField(_("Resume"), upload_to="resumes/%Y/%m/", null=True, blank=True)
+    resume_url = models.CharField(_("Resume URL"), max_length=500, blank=True)
     stage = models.CharField(_("Stage"), max_length=20, choices=STAGE_CHOICES, default="applied")
     notes = models.TextField(blank=True)
     # If applicant is already a system user
@@ -545,9 +545,7 @@ class Leave(TenantAwareModel):
         "party.StaffProfile", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="approved_leaves"
     )
-    support_document = models.FileField(
-        _("Supporting Document"), upload_to="leave_docs/%Y/%m/", null=True, blank=True
-    )
+    support_document_url = models.CharField(_("Supporting Document URL"), max_length=500, blank=True)
     notes = models.TextField(_("Notes"), blank=True, null=True)
 
     class Meta:

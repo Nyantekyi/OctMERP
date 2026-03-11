@@ -287,9 +287,7 @@ class ProjectExpense(TenantAwareModel):
         _("Amount"), max_digits=20, decimal_places=2,
         default=0, default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
     )
-    receipt = models.FileField(
-        _("Receipt"), upload_to="project_expenses/%Y/%m/", null=True, blank=True
-    )
+    receipt_url = models.CharField(_("Receipt URL"), max_length=500, blank=True)
     expense_account = models.ForeignKey(
         "accounting.Account", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="project_expense_accounts"
@@ -326,7 +324,7 @@ class ProjectDocument(TenantAwareModel):
     task = models.ForeignKey(Task, on_delete=models.SET_NULL, null=True, blank=True, related_name="documents")
     name = models.CharField(_("Document Name"), max_length=200)
     document_type = models.CharField(_("Type"), max_length=20, choices=DOCUMENT_TYPE_CHOICES, default="other")
-    file = models.FileField(_("File"), upload_to="projects/%Y/%m/")
+    file_url = models.CharField(_("File URL"), max_length=500)
     uploaded_by = models.ForeignKey(
         "party.StaffProfile", on_delete=models.SET_NULL, null=True, blank=True, related_name="project_documents"
     )

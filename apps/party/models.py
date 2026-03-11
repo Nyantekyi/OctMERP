@@ -415,7 +415,7 @@ class Document(TenantAwareModel):
         DocumentType, verbose_name=_("Document Type"),
         on_delete=models.SET_NULL, null=True, blank=True, related_name="documents"
     )
-    document_file = models.FileField(_("Document File"), upload_to="documents/%Y/%m/")
+    document_url = models.CharField(_("Document File URL"), max_length=500)
     description = models.TextField(blank=True, null=True)
     custom_fields = models.JSONField(_("Custom Fields"), blank=True, null=True, default=dict)
     # Attach to any model (Company, StaffProfile, etc.)
@@ -434,7 +434,7 @@ class Document(TenantAwareModel):
         ]
 
     def __str__(self):
-        return str(self.document_file.name)
+        return str(self.document_url)
 
     def get_absolute_url(self):
         return reverse("document_detail", kwargs={"pk": self.pk})

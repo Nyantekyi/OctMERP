@@ -247,7 +247,7 @@ class Document(TenantAwareModel):
     document_type = models.ForeignKey(
         DocumentType, on_delete=models.CASCADE, null=True, related_name="documents"
     )
-    document_file = models.FileField(_("File"), upload_to="documents/%Y/%m/")
+    document_url = models.CharField(_("File URL"), max_length=500)
     description = models.TextField(blank=True, null=True)
     custom_fields = models.JSONField(blank=True, null=True, default=dict)
 
@@ -255,7 +255,7 @@ class Document(TenantAwareModel):
         verbose_name = _("Document")
 
     def __str__(self):
-        return f"{self.document_type}: {self.document_file.name}"
+        return f"{self.document_type}: {self.document_url}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

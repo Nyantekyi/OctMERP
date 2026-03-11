@@ -44,8 +44,10 @@ class SalesQuotation(TenantAwareModel):
     issue_date = models.DateField(_("Issue Date"), default=timezone.now)
     expiry_date = models.DateField(_("Expiry Date"), null=True, blank=True)
     status = models.CharField(_("Status"), max_length=20, choices=STATUS_CHOICES, default="draft")
-    pricelist = models.ForeignKey(
-        "inventory.Pricelist", on_delete=models.SET_NULL, null=True, blank=True, related_name="quotations"
+    pricing_department = models.ForeignKey(
+        "department.Department", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="quotation_pricing",
+        help_text=_("Department whose ItemPricingDepartment rules apply to this quotation.")
     )
     subtotal = MoneyField(
         _("Subtotal"), max_digits=20, decimal_places=2,
@@ -83,6 +85,12 @@ class SalesQuotationLine(TenantAwareModel):
     )
     quantity = models.DecimalField(_("Quantity"), max_digits=14, decimal_places=4)
     unit = models.ForeignKey("inventory.Unit", on_delete=models.PROTECT, related_name="quotation_lines")
+    item_pricing = models.ForeignKey(
+        "inventory.ItemPricingDepartment",
+        on_delete=models.PROTECT, null=True, blank=True,
+        related_name="quotation_lines",
+        verbose_name=_("Pricing Rule")
+    )
     unit_price = MoneyField(
         _("Unit Price"), max_digits=20, decimal_places=2,
         default=0, default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
@@ -136,8 +144,10 @@ class SalesOrder(TenantAwareModel):
     order_date = models.DateTimeField(_("Order Date"), default=timezone.now)
     requested_delivery_date = models.DateField(_("Requested Delivery Date"), null=True, blank=True)
     status = models.CharField(_("Status"), max_length=20, choices=STATUS_CHOICES, default="draft")
-    pricelist = models.ForeignKey(
-        "inventory.Pricelist", on_delete=models.SET_NULL, null=True, blank=True, related_name="sales_orders"
+    pricing_department = models.ForeignKey(
+        "department.Department", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="sales_order_pricing",
+        help_text=_("Department whose ItemPricingDepartment rules apply to this order.")
     )
     shipping_address_line1 = models.CharField(_("Ship To Line 1"), max_length=255, blank=True)
     shipping_address_line2 = models.CharField(_("Ship To Line 2"), max_length=255, blank=True)
@@ -183,6 +193,12 @@ class SalesOrderLine(TenantAwareModel):
     quantity_ordered = models.DecimalField(_("Qty Ordered"), max_digits=14, decimal_places=4)
     quantity_delivered = models.DecimalField(_("Qty Delivered"), max_digits=14, decimal_places=4, default=0)
     unit = models.ForeignKey("inventory.Unit", on_delete=models.PROTECT, related_name="so_lines")
+    item_pricing = models.ForeignKey(
+        "inventory.ItemPricingDepartment",
+        on_delete=models.PROTECT, null=True, blank=True,
+        related_name="so_lines",
+        verbose_name=_("Pricing Rule")
+    )
     unit_price = MoneyField(
         _("Unit Price"), max_digits=20, decimal_places=2,
         default=0, default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES

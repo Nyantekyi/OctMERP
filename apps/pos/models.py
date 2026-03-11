@@ -34,9 +34,6 @@ class POSConfig(TenantAwareModel):
     """
     name = models.CharField(_("Terminal Name"), max_length=100)
     branch = models.ForeignKey("department.Branch", on_delete=models.CASCADE, related_name="pos_configs")
-    default_pricelist = models.ForeignKey(
-        "inventory.Pricelist", on_delete=models.SET_NULL, null=True, blank=True, related_name="pos_configs"
-    )
     allowed_payment_methods = models.JSONField(
         _("Allowed Payment Methods"),
         default=list,
@@ -150,9 +147,6 @@ class POSOrder(TenantAwareModel):
     )
     order_date = models.DateTimeField(_("Order Date"), default=timezone.now)
     status = models.CharField(_("Status"), max_length=20, choices=STATUS_CHOICES, default="draft")
-    pricelist = models.ForeignKey(
-        "inventory.Pricelist", on_delete=models.SET_NULL, null=True, blank=True, related_name="pos_orders"
-    )
     subtotal = MoneyField(
         _("Subtotal"), max_digits=20, decimal_places=2,
         default=0, default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
@@ -208,6 +202,12 @@ class POSOrderLine(TenantAwareModel):
     )
     quantity = models.DecimalField(_("Quantity"), max_digits=14, decimal_places=4)
     unit = models.ForeignKey("inventory.Unit", on_delete=models.PROTECT, related_name="pos_lines")
+    item_pricing = models.ForeignKey(
+        "inventory.ItemPricingDepartment",
+        on_delete=models.PROTECT, null=True, blank=True,
+        related_name="pos_lines",
+        verbose_name=_("Pricing Rule")
+    )
     unit_price = MoneyField(
         _("Unit Price"), max_digits=20, decimal_places=2,
         default=0, default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES

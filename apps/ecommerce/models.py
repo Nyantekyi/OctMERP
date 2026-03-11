@@ -38,8 +38,8 @@ class Store(TenantAwareModel):
         "department.Department", on_delete=models.PROTECT, related_name="ecom_store"
     )
     description = models.TextField(blank=True)
-    logo = models.ImageField(upload_to="store_logos/", null=True, blank=True)
-    banner = models.ImageField(upload_to="store_banners/", null=True, blank=True)
+    logo = models.CharField(_("Logo URL"), max_length=500, blank=True)
+    banner = models.CharField(_("Banner URL"), max_length=500, blank=True)
     primary_color = models.CharField(_("Primary Color"), max_length=7, default="#2563EB")
     currency = models.CharField(_("Store Currency"), max_length=3, default=DEFAULT_CURRENCY, choices=CURRENCY_CHOICES)
     is_open = models.BooleanField(_("Store Open?"), default=True)
@@ -47,9 +47,6 @@ class Store(TenantAwareModel):
     meta_description = models.CharField(_("SEO Description"), max_length=160, blank=True)
     allowed_countries = models.ManyToManyField(
         "contact.Country", blank=True, verbose_name=_("Ships To"), related_name="ecom_stores"
-    )
-    default_pricelist = models.ForeignKey(
-        "inventory.Pricelist", on_delete=models.SET_NULL, null=True, blank=True, related_name="ecom_stores"
     )
 
     class Meta:
@@ -71,7 +68,7 @@ class StoreCategory(TenantAwareModel):
         "inventory.ProductCategory", on_delete=models.SET_NULL, null=True, blank=True, related_name="store_categories"
     )
     description = models.TextField(blank=True)
-    image = models.ImageField(upload_to="store_categories/", null=True, blank=True)
+    image = models.CharField(_("Category Image URL"), max_length=500, blank=True)
     order = models.PositiveSmallIntegerField(default=0)
     is_visible = models.BooleanField(default=True)
 
@@ -312,9 +309,6 @@ class EcomOrder(TenantAwareModel):
     ship_to_postal = models.CharField(_("Postal Code"), max_length=20, blank=True)
     ship_to_country = models.ForeignKey(
         "contact.Country", on_delete=models.SET_NULL, null=True, blank=True, related_name="ecom_orders"
-    )
-    pricelist = models.ForeignKey(
-        "inventory.Pricelist", on_delete=models.SET_NULL, null=True, blank=True, related_name="ecom_orders"
     )
     coupon = models.ForeignKey(
         Coupon, on_delete=models.SET_NULL, null=True, blank=True, related_name="ecom_orders"

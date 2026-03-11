@@ -257,84 +257,6 @@ class Transaction(TenantAwareModel):
         return reverse("transaction_detail", kwargs={"pk": self.pk})
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Journal Entry (double-entry wrapper)
-# ─────────────────────────────────────────────────────────────────────────────
-
-class JournalEntry(TenantAwareModel):
-    """
-    Double-entry journal entry.  Must have balanced debit/credit lines.
-    """
-    STATUS_CHOICES = [
-        ("draft", _("Draft")),
-        ("posted", _("Posted")),
-        ("reversed", _("Reversed")),
-    ]
-
-    date = models.DateField(_("Entry Date"), default=timezone.now)
-    reference = models.CharField(_("Reference"), max_length=100, blank=True)
-    description = models.TextField(_("Description"))
-    status = models.CharField(_("Status"), max_length=20, choices=STATUS_CHOICES, default="draft")
-    is_reversal = models.BooleanField(_("Is Reversal?"), default=False)
-    reversed_entry = models.OneToOneField(
-        "self", verbose_name=_("Reversed Entry"), null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="reversal"
-    )
-    transaction_doc = models.OneToOneField(
-        TransactionDoc, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name="journal_entry"
-    )
-
-    class Meta:
-        verbose_name = _("Journal Entry")
-        verbose_name_plural = _("Journal Entries")
-        ordering = ["-date"]
-
-    def __str__(self):
-        return f"JE {self.reference or self.id} ({self.date})"
-
-    def get_absolute_url(self):
-        return reverse("journalentry_detail", kwargs={"pk": self.pk})
-
-    def post(self):
-        """Validate balance and mark as posted."""
-        lines = self.lines.all()
-        total_debit = sum(l.debit_amount for l in lines if l.debit_amount)
-        total_credit = sum(l.credit_amount for l in lines if l.credit_amount)
-        if total_debit != total_credit:
-            raise ValidationError(
-                _("Journal entry is not balanced: debits %(d)s ≠ credits %(c)s") % {
-                    "d": total_debit, "c": total_credit
-                }
-            )
-        self.status = "posted"
-        self.save()
-
-
-class JournalEntryLine(TenantAwareModel):
-    journal_entry = models.ForeignKey(JournalEntry, on_delete=models.CASCADE, related_name="lines")
-    account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name="journal_lines")
-    description = models.CharField(_("Description"), max_length=255, blank=True)
-    debit_amount = models.DecimalField(_("Debit"), max_digits=20, decimal_places=2, default=0)
-    credit_amount = models.DecimalField(_("Credit"), max_digits=20, decimal_places=2, default=0)
-    currency = CurrencyField(default=DEFAULT_CURRENCY, choices=CURRENCY_CHOICES)
-
-    class Meta:
-        verbose_name = _("Journal Entry Line")
-        verbose_name_plural = _("Journal Entry Lines")
-        ordering = ["journal_entry", "account__acc_number"]
-
-    def __str__(self):
-        return f"{self.account.acc_number} | Dr {self.debit_amount} / Cr {self.credit_amount}"
-
-    def clean(self):
-        if self.debit_amount < 0 or self.credit_amount < 0:
-            raise ValidationError(_("Debit and credit amounts must be non-negative."))
-        if self.debit_amount > 0 and self.credit_amount > 0:
-            raise ValidationError(_("A line cannot have both a debit and a credit amount."))
-        if self.debit_amount == 0 and self.credit_amount == 0:
-            raise ValidationError(_("A line must have either a debit or credit amount > 0."))
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Tax
@@ -708,7 +630,7 @@ class ExpenseReport(TenantAwareModel):
     )
     incurred_on = models.DateTimeField(_("Incurred On"))
     status = models.CharField(_("Status"), max_length=20, choices=STATUS_CHOICES, default="draft")
-    receipts = models.FileField(_("Receipts"), upload_to="expense_receipts/%Y/%m/", null=True, blank=True)
+    receipts_url = models.CharField(_("Receipts URL"), max_length=500, blank=True)
 
     class Meta:
         verbose_name = _("Expense Report")

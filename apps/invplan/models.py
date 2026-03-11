@@ -165,14 +165,14 @@ class OrderDocumentAttachment(TenantAwareModel):
     order_document = models.ForeignKey(
         OrderDocument, on_delete=models.CASCADE, related_name="attachments"
     )
-    file = models.FileField(upload_to="order_docs/%Y/%m/")
+    file_url = models.CharField(_("File URL"), max_length=500, blank=True)
     description = models.CharField(max_length=255, blank=True)
 
     class Meta:
         verbose_name = _("Order Document Attachment")
 
     def __str__(self):
-        return f"{self.order_document} — {self.file.name}"
+        return f"{self.order_document} — {self.file_url}"
 
 
 class OrderDocumentDetail(TenantAwareModel):

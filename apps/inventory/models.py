@@ -12,6 +12,7 @@ Covers:
   - Stock moves, adjustments, and reorder rules
 """
 
+from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Sum
@@ -122,7 +123,7 @@ class ProductCategory(TenantAwareModel):
     )
     description = models.TextField(blank=True)
     icon = models.CharField(_("Icon slug"), max_length=50, blank=True)
-    image = models.ImageField(upload_to="category_images/", null=True, blank=True)
+    image = models.CharField(_("Category Image URL"), max_length=500, blank=True)
 
     class Meta:
         verbose_name = _("Product Category")
@@ -196,7 +197,10 @@ class Product(TenantAwareModel):
         verbose_name=_("Purchase Unit"), related_name="purchased_products"
     )
     variant_types = models.ManyToManyField(VariantType, blank=True, related_name="products")
-    image = models.ImageField(upload_to="product_images/", null=True, blank=True)
+    pictures = ArrayField(
+        models.CharField(max_length=500), blank=True, default=list,
+        verbose_name=_("Product Image URLs")
+    )
     # Pricing
     sales_price = MoneyField(
         _("Sales Price"), max_digits=20, decimal_places=2,
@@ -237,7 +241,10 @@ class ProductVariant(TenantAwareModel):
     sku = models.CharField(_("SKU"), max_length=100, unique=True)
     attributes = models.ManyToManyField(VariantValue, blank=True, verbose_name=_("Attribute Values"))
     extra_description = models.CharField(_("Extra Description"), max_length=255, blank=True)
-    image = models.ImageField(upload_to="variant_images/", null=True, blank=True)
+    pictures = ArrayField(
+        models.CharField(max_length=500), blank=True, default=list,
+        verbose_name=_("Variant Image URLs")
+    )
     # Variant-level price override (if null, falls back to Product.sales_price)
     sales_price_override = MoneyField(
         _("Sales Price Override"), max_digits=20, decimal_places=2,
@@ -293,79 +300,135 @@ class Barcode(TenantAwareModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pricelist
+# Selling Rules
 # ─────────────────────────────────────────────────────────────────────────────
 
-class Pricelist(TenantAwareModel):
+class SellingRules(TenantAwareModel):
     """
-    Named pricelist (e.g. Wholesale, Retail, VIP).
-    Rules are defined per variant/category in PricelistItem.
+    Defines what sale operations are permitted for a named rule set
+    within a department.  Referenced by ItemPricingDepartment to enforce
+    per-item sale policies (discounts, credit sales, age restrictions, etc.).
+    unique_together: (name, department)
     """
-    COMPUTATION_CHOICES = [
-        ("fixed", _("Fixed Price")),
-        ("percent_off", _("% Off Base")),
-        ("markup", _("Markup over Cost")),
-    ]
-
-    name = models.CharField(_("Pricelist Name"), max_length=100, unique=True)
-    currency = models.CharField(_("Currency"), max_length=3, default=DEFAULT_CURRENCY)
-    computation = models.CharField(_("Computation Method"), max_length=20, choices=COMPUTATION_CHOICES, default="fixed")
-    valid_from = models.DateField(_("Valid From"), null=True, blank=True)
-    valid_to = models.DateField(_("Valid To"), null=True, blank=True)
     department = models.ForeignKey(
-        "department.Department", on_delete=models.PROTECT, related_name="pricelists", null=True, blank=True
+        "department.Department", on_delete=models.PROTECT, related_name="selling_rules"
+    )
+    name = models.CharField(_("Rule Name"), max_length=100)
+
+    # Pricing / variant permissions
+    variant_prices_allowed = models.BooleanField(_("Variant Prices Allowed?"), default=False)
+    discount_allowed = models.BooleanField(_("Discount Allowed?"), default=True)
+    service_item_included = models.BooleanField(_("Service Item Included?"), default=False)
+    coupon_restricted = models.BooleanField(_("Coupon Restricted?"), default=False)
+    price_entry_required = models.BooleanField(_("Manual Price Entry Required?"), default=False)
+    weight_entry_required = models.BooleanField(_("Weight Entry Required?"), default=False)
+
+    # Staff / employee permissions
+    employee_discount_allowed = models.BooleanField(_("Employee Discount Allowed?"), default=False)
+    allow_food_stamp = models.BooleanField(_("Allow Food Stamp?"), default=False)
+
+    # Tax settings
+    tax_exempt = models.BooleanField(_("Tax Exempt?"), default=False)
+    tax_excluded_in_prices = models.BooleanField(_("Tax Excluded in Prices?"), default=False)
+
+    # POS behavioural rules
+    prohibit_repeat_key = models.BooleanField(_("Prohibit Repeat Key?"), default=False)
+    frequent_shopper_eligibility = models.BooleanField(_("Frequent Shopper Eligible?"), default=False)
+    frequent_shopper_points = models.PositiveSmallIntegerField(_("Frequent Shopper Points"), default=0)
+    age_restrictions = models.BooleanField(_("Age Restricted?"), default=False)
+
+    # Return / financial settings
+    return_allowed = models.BooleanField(_("Return Allowed?"), default=True)
+    as_product_discount = models.BooleanField(_("Apply as Product Discount?"), default=False)
+    credit_sales_allowed = models.BooleanField(_("Credit Sales Allowed?"), default=False)
+
+    class Meta:
+        verbose_name = _("Selling Rules")
+        verbose_name_plural = _("Selling Rules")
+        unique_together = ("name", "department")
+        ordering = ["department", "name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.department})"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Item Pricing by Department
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ItemPricingDepartment(TenantAwareModel):
+    """
+    Authoritative selling price for a product within a specific
+    Department + UnitOfMeasure combination.
+
+    A single product can therefore carry different prices across
+    Wholesale, Retail, Manufacturing departments, and across pack sizes
+    (e.g. single unit vs. carton).
+
+    This is the price source for all POS, sales, and e-commerce
+    transactions — replacing the old flat Pricelist model.
+    unique_together: (sale_department, item, uom)
+    """
+    sale_department = models.ForeignKey(
+        "department.Department", on_delete=models.PROTECT, related_name="item_pricing"
+    )
+    item = models.ForeignKey(
+        Product, on_delete=models.CASCADE, related_name="pricing_by_department"
+    )
+    selling_rules = models.ForeignKey(
+        SellingRules, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="item_pricing"
+    )
+    selling_price = MoneyField(
+        _("Selling Price"), max_digits=20, decimal_places=2,
+        default=0, default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
+    )
+    employee_discount = models.DecimalField(
+        _("Employee Discount %"), max_digits=5, decimal_places=2, default=0
+    )
+    uom = models.ForeignKey(
+        UnitOfMeasure, on_delete=models.PROTECT, related_name="item_pricing",
+        verbose_name=_("Unit of Measure")
     )
 
     class Meta:
-        verbose_name = _("Pricelist")
-        verbose_name_plural = _("Pricelists")
-        ordering = ["name"]
+        verbose_name = _("Item Pricing (Department)")
+        verbose_name_plural = _("Item Pricing (Department)")
+        unique_together = ("sale_department", "item", "uom")
+        ordering = ["sale_department", "item"]
 
     def __str__(self):
-        return self.name
+        return f"{self.item} @ {self.sale_department} — {self.selling_price} / {self.uom}"
 
 
-class PricelistItem(TenantAwareModel):
+class ItemVariantPrices(TenantAwareModel):
     """
-    Single rule within a Pricelist: applies to a specific variant or
-    an entire product/category with optional quantity breaks.
+    Optional per-variant price override within an ItemPricingDepartment rule.
+    When absent, the base item selling_price from ItemPricingDepartment applies.
+    unique_together: (variant_item, item_pricing_department)
     """
-    pricelist = models.ForeignKey(Pricelist, on_delete=models.CASCADE, related_name="items")
-    variant = models.ForeignKey(
-        ProductVariant, on_delete=models.CASCADE, null=True, blank=True, related_name="pricelist_items"
+    variant_item = models.ForeignKey(
+        ProductVariant, on_delete=models.CASCADE, related_name="department_prices"
     )
-    product = models.ForeignKey(
-        Product, on_delete=models.CASCADE, null=True, blank=True, related_name="pricelist_items"
+    item_pricing_department = models.ForeignKey(
+        ItemPricingDepartment, on_delete=models.CASCADE, related_name="variant_prices"
     )
-    category = models.ForeignKey(
-        ProductCategory, on_delete=models.CASCADE, null=True, blank=True, related_name="pricelist_items"
+    selling_price = MoneyField(
+        _("Variant Selling Price"), max_digits=20, decimal_places=2,
+        default=0, default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
     )
-    min_quantity = models.DecimalField(_("Min. Quantity"), max_digits=10, decimal_places=3, default=1)
-    fixed_price = MoneyField(
-        _("Fixed Price"), max_digits=20, decimal_places=2,
-        null=True, blank=True,
-        default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
-    )
-    percent_discount = models.DecimalField(_("Discount %"), max_digits=5, decimal_places=2, default=0)
-    markup_percent = models.DecimalField(_("Markup %"), max_digits=5, decimal_places=2, default=0)
 
     class Meta:
-        verbose_name = _("Pricelist Item")
-        verbose_name_plural = _("Pricelist Items")
-        ordering = ["pricelist", "min_quantity"]
+        verbose_name = _("Item Variant Price")
+        verbose_name_plural = _("Item Variant Prices")
+        unique_together = ("variant_item", "item_pricing_department")
+        ordering = ["variant_item"]
 
     def __str__(self):
-        target = self.variant or self.product or self.category or "All"
-        return f"{self.pricelist} — {target} (min qty {self.min_quantity})"
-
-    def compute_price(self, base_price):
-        if self.pricelist.computation == "fixed" and self.fixed_price:
-            return self.fixed_price
-        elif self.pricelist.computation == "percent_off":
-            return base_price * (1 - self.percent_discount / 100)
-        elif self.pricelist.computation == "markup":
-            return base_price * (1 + self.markup_percent / 100)
-        return base_price
+        return (
+            f"{self.variant_item} — {self.selling_price} "
+            f"({self.item_pricing_department.sale_department})"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

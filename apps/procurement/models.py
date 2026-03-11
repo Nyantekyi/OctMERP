@@ -344,7 +344,7 @@ class VendorContract(TenantAwareModel):
     status = models.CharField(_("Status"), max_length=20, choices=STATUS_CHOICES, default="draft")
     terms = models.TextField(_("Terms and Conditions"), blank=True)
     payment_terms_days = models.PositiveSmallIntegerField(_("Payment Terms (days)"), default=30)
-    document = models.FileField(_("Contract Document"), upload_to="vendor_contracts/%Y/", null=True, blank=True)
+    document_url = models.CharField(_("Contract Document URL"), max_length=500, blank=True)
 
     class Meta:
         verbose_name = _("Vendor Contract")
