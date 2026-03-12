@@ -1,91 +1,111 @@
-"""
-apps/pos/views.py
-"""
-from django.utils import timezone
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
+"""apps/pos/views.py"""
+
 from rest_framework.response import Response
 
-from apps.common.permissions import IsTenantUser, IsManager
-from .models import POSConfig, POSSession, POSOrder, POSOrderLine, POSPayment, CashDrawerEvent
+from apps.common.api import build_action_route, build_model_viewset
+from apps.common.permissions import IsTenantUser
+from .models import CashDrawerEvent, POSConfig, POSOrder, POSOrderLine, POSPayment, POSSession
 from .serializers import (
-    POSConfigSerializer, POSSessionSerializer, POSOrderSerializer,
-    POSOrderLineSerializer, POSPaymentSerializer, CashDrawerEventSerializer,
+    CashDrawerEventSerializer,
+    POSConfigSerializer,
+    POSOrderLineSerializer,
+    POSOrderSerializer,
+    POSPaymentSerializer,
+    POSSessionSerializer,
 )
 
 
-class POSConfigViewSet(viewsets.ModelViewSet):
-    queryset = POSConfig.objects.select_related("branch")
-    serializer_class = POSConfigSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["branch", "is_active"]
-    search_fields = ["name"]
+def _open_session(self, request, *args, **kwargs):
+    session = self.get_object()
+    session.open()
+    return Response({"success": True, "data": POSSessionSerializer(session).data})
 
 
-class POSSessionViewSet(viewsets.ModelViewSet):
-    queryset = POSSession.objects.select_related("config", "cashier")
-    serializer_class = POSSessionSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["config", "cashier", "status"]
-    ordering_fields = ["opened_at"]
-
-    @action(detail=True, methods=["post"])
-    def open_session(self, request, pk=None):
-        session = self.get_object()
-        session.open()
-        return Response({"success": True, "data": POSSessionSerializer(session).data})
-
-    @action(detail=True, methods=["post"])
-    def close_session(self, request, pk=None):
-        session = self.get_object()
-        counted = request.data.get("closing_balance", 0)
-        currency = request.data.get("closing_balance_currency", "GHS")
-        from djmoney.money import Money
-        session.close(Money(counted, currency))
-        return Response({"success": True, "data": POSSessionSerializer(session).data})
+def _close_session(self, request, *args, **kwargs):
+    session = self.get_object()
+    counted = request.data.get("closing_balance", 0)
+    currency = request.data.get("closing_balance_currency", "GHS")
+    from djmoney.money import Money
+    session.close(Money(counted, currency))
+    return Response({"success": True, "data": POSSessionSerializer(session).data})
 
 
-class POSOrderViewSet(viewsets.ModelViewSet):
-    queryset = POSOrder.objects.select_related("session", "client").prefetch_related("lines", "payments")
-    serializer_class = POSOrderSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["status", "session", "client"]
-    ordering_fields = ["order_date"]
-
-    @action(detail=True, methods=["post"])
-    def complete(self, request, pk=None):
-        order = self.get_object()
-        order.status = "paid"
-        order.compute_change()
-        order.save()
-        return Response({"success": True, "data": POSOrderSerializer(order).data})
-
-    @action(detail=True, methods=["post"])
-    def cancel(self, request, pk=None):
-        order = self.get_object()
-        order.status = "cancelled"
-        order.save()
-        return Response({"success": True, "data": POSOrderSerializer(order).data})
+def _complete_order(self, request, *args, **kwargs):
+    order = self.get_object()
+    order.status = "paid"
+    order.compute_change()
+    order.save()
+    return Response({"success": True, "data": POSOrderSerializer(order).data})
 
 
-class POSOrderLineViewSet(viewsets.ModelViewSet):
-    queryset = POSOrderLine.objects.select_related("order", "product")
-    serializer_class = POSOrderLineSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["order", "product", "is_returned"]
+def _cancel_order(self, request, *args, **kwargs):
+    order = self.get_object()
+    order.status = "cancelled"
+    order.save(update_fields=["status", "updated_at"])
+    return Response({"success": True, "data": POSOrderSerializer(order).data})
 
 
-class POSPaymentViewSet(viewsets.ModelViewSet):
-    queryset = POSPayment.objects.select_related("order")
-    serializer_class = POSPaymentSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["order", "payment_method"]
-    ordering_fields = ["payment_at"]
+POSConfigViewSet = build_model_viewset(
+    POSConfig,
+    POSConfigSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["branch", "is_active"],
+    search_fields=["name"],
+    select_related_fields=["branch"],
+)
+
+POSSessionViewSet = build_model_viewset(
+    POSSession,
+    POSSessionSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["config", "cashier", "status"],
+    ordering_fields=["opened_at"],
+    select_related_fields=["config", "cashier"],
+    extra_routes={
+        "open_session": build_action_route("open_session", _open_session, methods=("post",), detail=True),
+        "close_session": build_action_route("close_session", _close_session, methods=("post",), detail=True),
+    },
+)
 
 
-class CashDrawerEventViewSet(viewsets.ModelViewSet):
-    queryset = CashDrawerEvent.objects.select_related("session", "performed_by")
-    serializer_class = CashDrawerEventSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["session", "event_type"]
-    ordering_fields = ["occurred_at"]
+POSOrderViewSet = build_model_viewset(
+    POSOrder,
+    POSOrderSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["status", "session", "client"],
+    ordering_fields=["order_date"],
+    select_related_fields=["session", "client"],
+    prefetch_related_fields=["lines", "payments"],
+    extra_routes={
+        "complete": build_action_route("complete", _complete_order, methods=("post",), detail=True),
+        "cancel": build_action_route("cancel", _cancel_order, methods=("post",), detail=True),
+    },
+)
+
+
+POSOrderLineViewSet = build_model_viewset(
+    POSOrderLine,
+    POSOrderLineSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["order", "product", "is_returned"],
+    select_related_fields=["order", "product"],
+)
+
+
+POSPaymentViewSet = build_model_viewset(
+    POSPayment,
+    POSPaymentSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["order", "payment_method"],
+    ordering_fields=["payment_at"],
+    select_related_fields=["order"],
+)
+
+CashDrawerEventViewSet = build_model_viewset(
+    CashDrawerEvent,
+    CashDrawerEventSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["session", "event_type"],
+    ordering_fields=["occurred_at"],
+    select_related_fields=["session", "performed_by"],
+)

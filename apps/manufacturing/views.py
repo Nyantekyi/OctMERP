@@ -1,115 +1,138 @@
-"""
-apps/manufacturing/views.py
-"""
-from django.utils import timezone
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
+"""apps/manufacturing/views.py"""
+
 from rest_framework.response import Response
 
-from apps.common.permissions import IsTenantUser, IsManager
+from apps.common.api import build_action_route, build_model_viewset
+from apps.common.permissions import IsTenantUser
 from .models import (
-    BillOfMaterials, BOMComponent, WorkCenter, Routing, RoutingStep,
-    WorkOrder, WorkOrderLine, QualityCheck, ScrapRecord,
+    BillOfMaterials,
+    BOMComponent,
+    QualityCheck,
+    Routing,
+    RoutingStep,
+    ScrapRecord,
+    WorkCenter,
+    WorkOrder,
+    WorkOrderLine,
 )
 from .serializers import (
-    BillOfMaterialsSerializer, BOMComponentSerializer,
-    WorkCenterSerializer, RoutingSerializer, RoutingStepSerializer,
-    WorkOrderSerializer, WorkOrderLineSerializer,
-    QualityCheckSerializer, ScrapRecordSerializer,
+    BillOfMaterialsSerializer,
+    BOMComponentSerializer,
+    QualityCheckSerializer,
+    RoutingSerializer,
+    RoutingStepSerializer,
+    ScrapRecordSerializer,
+    WorkCenterSerializer,
+    WorkOrderLineSerializer,
+    WorkOrderSerializer,
 )
 
 
-class BillOfMaterialsViewSet(viewsets.ModelViewSet):
-    queryset = BillOfMaterials.objects.select_related("product", "variant", "unit", "branch").prefetch_related("components")
-    serializer_class = BillOfMaterialsSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["product", "variant", "bom_type", "branch", "is_default", "is_active"]
-    search_fields = ["name"]
-    ordering_fields = ["version"]
+def _confirm_work_order(self, request, *args, **kwargs):
+    wo = self.get_object()
+    wo.status = "confirmed"
+    wo.save(update_fields=["status", "updated_at"])
+    return Response({"success": True, "data": WorkOrderSerializer(wo).data})
 
 
-class BOMComponentViewSet(viewsets.ModelViewSet):
-    queryset = BOMComponent.objects.select_related("bom", "component", "unit")
-    serializer_class = BOMComponentSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["bom", "component", "is_optional"]
+def _start_work_order(self, request, *args, **kwargs):
+    from django.utils import timezone
+
+    wo = self.get_object()
+    wo.status = "in_progress"
+    wo.actual_start = timezone.now()
+    wo.save(update_fields=["status", "actual_start", "updated_at"])
+    return Response({"success": True, "data": WorkOrderSerializer(wo).data})
 
 
-class WorkCenterViewSet(viewsets.ModelViewSet):
-    queryset = WorkCenter.objects.select_related("branch", "default_operator")
-    serializer_class = WorkCenterSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["branch", "is_active"]
-    search_fields = ["name"]
+def _complete_work_order(self, request, *args, **kwargs):
+    from django.utils import timezone
+
+    wo = self.get_object()
+    qty = request.data.get("quantity_produced", wo.quantity_planned)
+    wo.status = "done"
+    wo.actual_end = timezone.now()
+    wo.quantity_produced = qty
+    wo.save(update_fields=["status", "actual_end", "quantity_produced", "updated_at"])
+    return Response({"success": True, "data": WorkOrderSerializer(wo).data})
 
 
-class RoutingViewSet(viewsets.ModelViewSet):
-    queryset = Routing.objects.select_related("bom").prefetch_related("steps")
-    serializer_class = RoutingSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["bom"]
-    search_fields = ["name"]
-
-
-class RoutingStepViewSet(viewsets.ModelViewSet):
-    queryset = RoutingStep.objects.select_related("routing", "work_center")
-    serializer_class = RoutingStepSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["routing", "work_center"]
-    ordering_fields = ["sequence"]
-
-
-class WorkOrderViewSet(viewsets.ModelViewSet):
-    queryset = WorkOrder.objects.select_related("bom", "routing", "branch", "responsible").prefetch_related("lines", "quality_checks")
-    serializer_class = WorkOrderSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["status", "branch", "responsible"]
-    search_fields = ["reference"]
-    ordering_fields = ["scheduled_start", "scheduled_end"]
-
-    @action(detail=True, methods=["post"])
-    def confirm(self, request, pk=None):
-        wo = self.get_object()
-        wo.status = "confirmed"
-        wo.save()
-        return Response({"success": True, "data": WorkOrderSerializer(wo).data})
-
-    @action(detail=True, methods=["post"])
-    def start(self, request, pk=None):
-        wo = self.get_object()
-        wo.status = "in_progress"
-        wo.actual_start = timezone.now()
-        wo.save()
-        return Response({"success": True, "data": WorkOrderSerializer(wo).data})
-
-    @action(detail=True, methods=["post"])
-    def complete(self, request, pk=None):
-        wo = self.get_object()
-        qty = request.data.get("quantity_produced", wo.quantity_planned)
-        wo.status = "done"
-        wo.actual_end = timezone.now()
-        wo.quantity_produced = qty
-        wo.save()
-        return Response({"success": True, "data": WorkOrderSerializer(wo).data})
-
-
-class WorkOrderLineViewSet(viewsets.ModelViewSet):
-    queryset = WorkOrderLine.objects.select_related("work_order", "bom_component")
-    serializer_class = WorkOrderLineSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["work_order"]
-
-
-class QualityCheckViewSet(viewsets.ModelViewSet):
-    queryset = QualityCheck.objects.select_related("work_order", "checked_by")
-    serializer_class = QualityCheckSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["work_order", "result"]
-
-
-class ScrapRecordViewSet(viewsets.ModelViewSet):
-    queryset = ScrapRecord.objects.select_related("variant", "work_order", "branch", "scrapped_by")
-    serializer_class = ScrapRecordSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["variant", "work_order", "branch", "reason"]
-    ordering_fields = ["scrap_date"]
+BillOfMaterialsViewSet = build_model_viewset(
+    BillOfMaterials,
+    BillOfMaterialsSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["product", "variant", "bom_type", "branch", "is_default", "is_active"],
+    search_fields=["name"],
+    ordering_fields=["version"],
+    select_related_fields=["product", "variant", "unit", "branch"],
+    prefetch_related_fields=["components"],
+)
+BOMComponentViewSet = build_model_viewset(
+    BOMComponent,
+    BOMComponentSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["bom", "component", "is_optional"],
+    select_related_fields=["bom", "component", "unit"],
+)
+WorkCenterViewSet = build_model_viewset(
+    WorkCenter,
+    WorkCenterSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["branch", "is_active"],
+    search_fields=["name"],
+    select_related_fields=["branch", "default_operator"],
+)
+RoutingViewSet = build_model_viewset(
+    Routing,
+    RoutingSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["bom"],
+    search_fields=["name"],
+    select_related_fields=["bom"],
+    prefetch_related_fields=["steps"],
+)
+RoutingStepViewSet = build_model_viewset(
+    RoutingStep,
+    RoutingStepSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["routing", "work_center"],
+    ordering_fields=["sequence"],
+    select_related_fields=["routing", "work_center"],
+)
+WorkOrderViewSet = build_model_viewset(
+    WorkOrder,
+    WorkOrderSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["status", "branch", "responsible"],
+    search_fields=["reference"],
+    ordering_fields=["scheduled_start", "scheduled_end"],
+    select_related_fields=["bom", "routing", "branch", "responsible"],
+    prefetch_related_fields=["lines", "quality_checks"],
+    extra_routes={
+        "confirm": build_action_route("confirm", _confirm_work_order, methods=("post",), detail=True),
+        "start": build_action_route("start", _start_work_order, methods=("post",), detail=True),
+        "complete": build_action_route("complete", _complete_work_order, methods=("post",), detail=True),
+    },
+)
+WorkOrderLineViewSet = build_model_viewset(
+    WorkOrderLine,
+    WorkOrderLineSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["work_order"],
+    select_related_fields=["work_order", "bom_component"],
+)
+QualityCheckViewSet = build_model_viewset(
+    QualityCheck,
+    QualityCheckSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["work_order", "result"],
+    select_related_fields=["work_order", "checked_by"],
+)
+ScrapRecordViewSet = build_model_viewset(
+    ScrapRecord,
+    ScrapRecordSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["variant", "work_order", "branch", "reason"],
+    ordering_fields=["scrap_date"],
+    select_related_fields=["variant", "work_order", "branch", "scrapped_by"],
+)

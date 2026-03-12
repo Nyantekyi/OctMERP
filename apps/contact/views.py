@@ -1,108 +1,112 @@
-"""
-apps/contact/views.py
-"""
+"""apps/contact/views.py"""
 
-from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
 
+from apps.common.api import build_model_viewset, build_readonly_model_viewset
 from apps.common.permissions import IsTenantUser
-from .models import Country, State, City, AddressType, PhoneType, EmailType, WebType, Phone, Address, Email, Website, Contact, DocumentType, Document
-from .serializers import CountrySerializer, StateSerializer, CitySerializer, AddressTypeSerializer, PhoneTypeSerializer, EmailTypeSerializer, WebTypeSerializer, PhoneSerializer, AddressSerializer, EmailSerializer, WebsiteSerializer, ContactSerializer, DocumentTypeSerializer, DocumentSerializer
+from .models import Address, AddressType, City, Contact, Country, Document, DocumentType, Email, EmailType, Phone, PhoneType, State, WebType, Website
+from .serializers import AddressSerializer, AddressTypeSerializer, CitySerializer, ContactSerializer, CountrySerializer, DocumentSerializer, DocumentTypeSerializer, EmailSerializer, EmailTypeSerializer, PhoneSerializer, PhoneTypeSerializer, StateSerializer, WebTypeSerializer, WebsiteSerializer
 
 
-class CountryViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Country.objects.all()
-    serializer_class = CountrySerializer
-    permission_classes = [AllowAny]
-    search_fields = ["name", "iso2", "iso3"]
-    ordering_fields = ["name"]
+CountryViewSet = build_readonly_model_viewset(
+    Country,
+    CountrySerializer,
+    permission_classes=[AllowAny],
+    search_fields=["name", "iso2", "iso3"],
+    ordering_fields=["name"],
+    tenant_scoped=False,
+)
 
 
-class StateViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = State.objects.select_related("country")
-    serializer_class = StateSerializer
-    permission_classes = [AllowAny]
-    filterset_fields = ["country"]
-    search_fields = ["name"]
+StateViewSet = build_readonly_model_viewset(
+    State,
+    StateSerializer,
+    permission_classes=[AllowAny],
+    filterset_fields=["country"],
+    search_fields=["name"],
+    select_related_fields=["country"],
+    tenant_scoped=False,
+)
 
 
-class CityViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = City.objects.select_related("state__country")
-    serializer_class = CitySerializer
-    permission_classes = [AllowAny]
-    filterset_fields = ["state", "state__country"]
-    search_fields = ["name"]
+CityViewSet = build_readonly_model_viewset(
+    City,
+    CitySerializer,
+    permission_classes=[AllowAny],
+    filterset_fields=["state", "state__country"],
+    search_fields=["name"],
+    select_related_fields=["state", "state__country"],
+    tenant_scoped=False,
+)
 
 
-class AddressTypeViewSet(viewsets.ModelViewSet):
-    queryset = AddressType.objects.all()
-    serializer_class = AddressTypeSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["name"]
+AddressTypeViewSet = build_model_viewset(
+    AddressType,
+    AddressTypeSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["name"],
+)
 
 
-class PhoneTypeViewSet(viewsets.ModelViewSet):
-    queryset = PhoneType.objects.all()
-    serializer_class = PhoneTypeSerializer
-    permission_classes = [IsTenantUser]
+PhoneTypeViewSet = build_model_viewset(PhoneType, PhoneTypeSerializer, permission_classes=[IsTenantUser])
 
 
-class EmailTypeViewSet(viewsets.ModelViewSet):
-    queryset = EmailType.objects.all()
-    serializer_class = EmailTypeSerializer
-    permission_classes = [IsTenantUser]
+EmailTypeViewSet = build_model_viewset(EmailType, EmailTypeSerializer, permission_classes=[IsTenantUser])
 
 
-class WebTypeViewSet(viewsets.ModelViewSet):
-    queryset = WebType.objects.all()
-    serializer_class = WebTypeSerializer
-    permission_classes = [IsTenantUser]
+WebTypeViewSet = build_model_viewset(WebType, WebTypeSerializer, permission_classes=[IsTenantUser])
 
 
-class PhoneViewSet(viewsets.ModelViewSet):
-    queryset = Phone.objects.select_related("phonetype")
-    serializer_class = PhoneSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["phonetype", "is_whatsapp"]
+PhoneViewSet = build_model_viewset(
+    Phone,
+    PhoneSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["phonetype", "is_whatsapp"],
+    select_related_fields=["phonetype"],
+)
 
 
-class AddressViewSet(viewsets.ModelViewSet):
-    queryset = Address.objects.select_related("addresstype", "city")
-    serializer_class = AddressSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["addresstype", "city"]
-    search_fields = ["line", "city__name"]
+AddressViewSet = build_model_viewset(
+    Address,
+    AddressSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["addresstype", "city"],
+    search_fields=["line", "city__name"],
+    select_related_fields=["addresstype", "city"],
+)
 
 
-class EmailViewSet(viewsets.ModelViewSet):
-    queryset = Email.objects.all()
-    serializer_class = EmailSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["email"]
+EmailViewSet = build_model_viewset(
+    Email,
+    EmailSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["email"],
+)
 
 
-class WebsiteViewSet(viewsets.ModelViewSet):
-    queryset = Website.objects.all()
-    serializer_class = WebsiteSerializer
-    permission_classes = [IsTenantUser]
+WebsiteViewSet = build_model_viewset(Website, WebsiteSerializer, permission_classes=[IsTenantUser])
 
 
-class ContactViewSet(viewsets.ModelViewSet):
-    queryset = Contact.objects.all()
-    serializer_class = ContactSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["is_verified"]
+ContactViewSet = build_model_viewset(
+    Contact,
+    ContactSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["is_verified"],
+)
 
 
-class DocumentTypeViewSet(viewsets.ModelViewSet):
-    queryset = DocumentType.objects.all()
-    serializer_class = DocumentTypeSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["name"]
+DocumentTypeViewSet = build_model_viewset(
+    DocumentType,
+    DocumentTypeSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["name"],
+)
 
 
-class DocumentViewSet(viewsets.ModelViewSet):
-    queryset = Document.objects.select_related("document_type")
-    serializer_class = DocumentSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["document_type"]
+DocumentViewSet = build_model_viewset(
+    Document,
+    DocumentSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["document_type"],
+    select_related_fields=["document_type"],
+)

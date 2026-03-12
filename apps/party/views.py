@@ -1,57 +1,49 @@
-"""
-apps/party/views.py
-
-ViewSets for User, Profiles, Auth, and related Party models.
-"""
+"""apps/party/views.py"""
 
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
-from rest_framework import generics, permissions, status, viewsets
-from rest_framework.decorators import action
+from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from apps.common.permissions import IsTenantUser, IsManager, IsSuperUser
+from apps.common.api import build_action_route, build_model_viewset
+from apps.common.permissions import IsManager, IsTenantUser
+
 from .models import (
+    Address,
+    AgentProfile,
+    ClientProfile,
+    ContactPoint,
+    Document,
+    DocumentType,
     Occupation,
     StaffProfile,
-    ClientProfile,
     SupplierProfile,
-    AgentProfile,
-    ContactPoint,
-    Address,
-    DocumentType,
-    Document,
 )
-from .serializers import (
-    CustomTokenObtainPairSerializer,
-    RegisterStaffSerializer,
-    RegisterClientSerializer,
-    RegisterSupplierSerializer,
+from apps.party.serializers import (
+    AddressSerializer,
+    AgentProfileSerializer,
     ChangePasswordSerializer,
+    ClientProfileSerializer,
+    ContactPointSerializer,
+    CustomTokenObtainPairSerializer,
+    DocumentSerializer,
+    DocumentTypeSerializer,
+    MeSerializer,
     OccupationSerializer,
+    RegisterClientSerializer,
+    RegisterStaffSerializer,
+    RegisterSupplierSerializer,
+    StaffProfileSerializer,
+    SupplierProfileSerializer,
     UserSerializer,
     UserUpdateSerializer,
-    StaffProfileSerializer,
-    ClientProfileSerializer,
-    SupplierProfileSerializer,
-    AgentProfileSerializer,
-    ContactPointSerializer,
-    AddressSerializer,
-    DocumentTypeSerializer,
-    DocumentSerializer,
-    MeSerializer,
 )
 
 User = get_user_model()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Auth Views
-# ─────────────────────────────────────────────────────────────────────────────
-
 class CustomTokenObtainPairView(TokenObtainPairView):
-    """Login — returns JWT with extra claims."""
     serializer_class = CustomTokenObtainPairSerializer
 
 
@@ -63,10 +55,7 @@ class RegisterStaffView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        return Response(
-            {"success": True, "data": UserSerializer(user).data},
-            status=status.HTTP_201_CREATED,
-        )
+        return Response({"success": True, "data": UserSerializer(user).data}, status=status.HTTP_201_CREATED)
 
 
 class RegisterClientView(generics.CreateAPIView):
@@ -77,10 +66,7 @@ class RegisterClientView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        return Response(
-            {"success": True, "data": UserSerializer(user).data},
-            status=status.HTTP_201_CREATED,
-        )
+        return Response({"success": True, "data": UserSerializer(user).data}, status=status.HTTP_201_CREATED)
 
 
 class RegisterSupplierView(generics.CreateAPIView):
@@ -91,14 +77,10 @@ class RegisterSupplierView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        return Response(
-            {"success": True, "data": UserSerializer(user).data},
-            status=status.HTTP_201_CREATED,
-        )
+        return Response({"success": True, "data": UserSerializer(user).data}, status=status.HTTP_201_CREATED)
 
 
 class MeView(generics.RetrieveUpdateAPIView):
-    """GET /auth/me/ — returns full current user + profile."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_class(self):
@@ -114,7 +96,6 @@ class MeView(generics.RetrieveUpdateAPIView):
         return Response({"success": True, "data": serializer.data})
 
     def partial_update(self, request, *args, **kwargs):
-        kwargs["partial"] = True
         serializer = UserUpdateSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -122,7 +103,6 @@ class MeView(generics.RetrieveUpdateAPIView):
 
 
 class ChangePasswordView(generics.GenericAPIView):
-    """POST /auth/change-password/"""
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = ChangePasswordSerializer
 
@@ -140,133 +120,127 @@ class ChangePasswordView(generics.GenericAPIView):
         return Response({"success": True, "data": {"detail": _("Password changed successfully.")}})
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Occupation
-# ─────────────────────────────────────────────────────────────────────────────
-
-class OccupationViewSet(viewsets.ModelViewSet):
-    queryset = Occupation.objects.all()
-    serializer_class = OccupationSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["name", "isco_code"]
-    ordering_fields = ["name", "created_at"]
-    filterset_fields = []
+def _filter_users(self, queryset):
+    user_type = self.request.query_params.get("user_type")
+    if user_type:
+        queryset = queryset.filter(user_type=user_type)
+    return queryset
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Users
-# ─────────────────────────────────────────────────────────────────────────────
-
-class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["email", "first_name", "last_name"]
-    filterset_fields = ["user_type", "is_active"]
-    ordering_fields = ["email", "date_joined", "last_name"]
-
-    def get_permissions(self):
-        if self.action in ["destroy", "create"]:
-            return [IsManager()]
-        return super().get_permissions()
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        user_type = self.request.query_params.get("user_type")
-        if user_type:
-            qs = qs.filter(user_type=user_type)
-        return qs
-
-    @action(detail=True, methods=["get"])
-    def profile(self, request, pk=None):
-        user = self.get_object()
-        serializer = MeSerializer(user)
-        return Response({"success": True, "data": serializer.data})
-
-    @action(detail=True, methods=["post"], url_path="activate")
-    def activate(self, request, pk=None):
-        user = self.get_object()
-        user.is_active = True
-        user.save(update_fields=["is_active"])
-        return Response({"success": True, "data": {"detail": "User activated."}})
-
-    @action(detail=True, methods=["post"], url_path="deactivate")
-    def deactivate(self, request, pk=None):
-        user = self.get_object()
-        user.is_active = False
-        user.save(update_fields=["is_active"])
-        return Response({"success": True, "data": {"detail": "User deactivated."}})
+def _user_permissions(self):
+    if self.action in ["destroy", "create"]:
+        return [IsManager()]
+    return [permission() for permission in self.permission_classes]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Staff Profiles
-# ─────────────────────────────────────────────────────────────────────────────
-
-class StaffProfileViewSet(viewsets.ModelViewSet):
-    queryset = StaffProfile.objects.select_related("user", "department", "occupation").prefetch_related("branches")
-    serializer_class = StaffProfileSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["user__first_name", "user__last_name", "user__email", "employee_id"]
-    filterset_fields = ["is_manager", "department", "is_active"]
-    ordering_fields = ["user__last_name", "created_at"]
+def _user_profile(self, request, *args, **kwargs):
+    user = self.get_object()
+    return Response({"success": True, "data": MeSerializer(user).data})
 
 
-class ClientProfileViewSet(viewsets.ModelViewSet):
-    queryset = ClientProfile.objects.select_related("user", "department", "payment_class")
-    serializer_class = ClientProfileSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["user__first_name", "user__last_name", "user__email"]
-    filterset_fields = ["tier", "department", "is_active"]
-    ordering_fields = ["user__last_name", "created_at"]
+def _activate_user(self, request, *args, **kwargs):
+    user = self.get_object()
+    user.is_active = True
+    user.save(update_fields=["is_active"])
+    return Response({"success": True, "data": {"detail": "User activated."}})
 
 
-class SupplierProfileViewSet(viewsets.ModelViewSet):
-    queryset = SupplierProfile.objects.select_related("user", "department", "payment_class")
-    serializer_class = SupplierProfileSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["user__first_name", "user__last_name", "company_name"]
-    filterset_fields = ["is_approved", "department", "is_active"]
-    ordering_fields = ["user__last_name", "rating", "created_at"]
+def _deactivate_user(self, request, *args, **kwargs):
+    user = self.get_object()
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+    return Response({"success": True, "data": {"detail": "User deactivated."}})
 
 
-class AgentProfileViewSet(viewsets.ModelViewSet):
-    queryset = AgentProfile.objects.select_related("user")
-    serializer_class = AgentProfileSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["agent_type", "status", "is_active"]
+OccupationViewSet = build_model_viewset(
+    Occupation,
+    OccupationSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["name", "isco_code"],
+    ordering_fields=["name", "created_at"],
+)
 
+UserViewSet = build_model_viewset(
+    User,
+    UserSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["email", "first_name", "last_name"],
+    filterset_fields=["user_type", "is_active"],
+    ordering_fields=["email", "date_joined", "last_name"],
+    queryset_handler=_filter_users,
+    extra_routes={
+        "profile": build_action_route("profile", _user_profile, methods=("get",), detail=True),
+        "activate": build_action_route("activate", _activate_user, methods=("post",), detail=True, url_path="activate"),
+        "deactivate": build_action_route("deactivate", _deactivate_user, methods=("post",), detail=True, url_path="deactivate"),
+    },
+    method_overrides={"get_permissions": _user_permissions},
+)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Contact
-# ─────────────────────────────────────────────────────────────────────────────
+StaffProfileViewSet = build_model_viewset(
+    StaffProfile,
+    StaffProfileSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["user__first_name", "user__last_name", "user__email", "employee_id"],
+    filterset_fields=["is_manager", "department", "is_active"],
+    ordering_fields=["user__last_name", "created_at"],
+    select_related_fields=["user", "department", "occupation"],
+    prefetch_related_fields=["branches"],
+)
 
-class ContactPointViewSet(viewsets.ModelViewSet):
-    queryset = ContactPoint.objects.all()
-    serializer_class = ContactPointSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["contact_type", "is_primary", "is_verified"]
+ClientProfileViewSet = build_model_viewset(
+    ClientProfile,
+    ClientProfileSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["user__first_name", "user__last_name", "user__email"],
+    filterset_fields=["tier", "department", "is_active"],
+    ordering_fields=["user__last_name", "created_at"],
+    select_related_fields=["user", "department", "payment_class"],
+)
 
+SupplierProfileViewSet = build_model_viewset(
+    SupplierProfile,
+    SupplierProfileSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["user__first_name", "user__last_name", "company_name"],
+    filterset_fields=["is_approved", "department", "is_active"],
+    ordering_fields=["user__last_name", "rating", "created_at"],
+    select_related_fields=["user", "department", "payment_class"],
+)
 
-class AddressViewSet(viewsets.ModelViewSet):
-    queryset = Address.objects.select_related("city", "state", "country")
-    serializer_class = AddressSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["address_type", "is_primary", "country", "city"]
+AgentProfileViewSet = build_model_viewset(
+    AgentProfile,
+    AgentProfileSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["agent_type", "status", "is_active"],
+    select_related_fields=["user"],
+)
 
+ContactPointViewSet = build_model_viewset(
+    ContactPoint,
+    ContactPointSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["contact_type", "is_primary", "is_verified"],
+)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Documents
-# ─────────────────────────────────────────────────────────────────────────────
+AddressViewSet = build_model_viewset(
+    Address,
+    AddressSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["address_type", "is_primary", "country", "city"],
+    select_related_fields=["city", "state", "country"],
+)
 
-class DocumentTypeViewSet(viewsets.ModelViewSet):
-    queryset = DocumentType.objects.all()
-    serializer_class = DocumentTypeSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["name"]
+DocumentTypeViewSet = build_model_viewset(
+    DocumentType,
+    DocumentTypeSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["name"],
+)
 
-
-class DocumentViewSet(viewsets.ModelViewSet):
-    queryset = Document.objects.select_related("document_type")
-    serializer_class = DocumentSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["document_type", "content_type"]
+DocumentViewSet = build_model_viewset(
+    Document,
+    DocumentSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["document_type", "content_type"],
+    select_related_fields=["document_type"],
+)

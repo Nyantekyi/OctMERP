@@ -1,116 +1,109 @@
-"""
-apps/contact/serializers.py
-"""
+"""apps/contact/serializers.py"""
 
-from rest_framework import serializers
+from apps.common.api import build_model_serializer
+
 from .models import (
-    Country, State, City,
-    AddressType, PhoneType, EmailType, WebType,
-    Phone, Address, Email, Website, Contact,
-    DocumentType, Document,
+    Address,
+    AddressType,
+    City,
+    Contact,
+    Country,
+    Document,
+    DocumentType,
+    Email,
+    EmailType,
+    Phone,
+    PhoneType,
+    State,
+    WebType,
+    Website,
 )
 
 
-class CountrySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Country
-        fields = ["id", "name", "iso3", "iso2", "numeric_code", "phone_code", "currency", "currency_name", "lat", "lon"]
+def _state_to_representation(serializer, instance, representation):
+    representation["country_name"] = getattr(getattr(instance, "country", None), "name", None)
+    return representation
 
 
-class StateSerializer(serializers.ModelSerializer):
-    country_name = serializers.CharField(source="country.name", read_only=True)
-
-    class Meta:
-        model = State
-        fields = ["id", "name", "state_code", "country", "country_name", "lat", "lon"]
-
-
-class CitySerializer(serializers.ModelSerializer):
-    state_name = serializers.CharField(source="state.name", read_only=True)
-    country_name = serializers.CharField(source="state.country.name", read_only=True)
-
-    class Meta:
-        model = City
-        fields = ["id", "name", "state", "state_name", "country_name", "lat", "lon"]
+def _city_to_representation(serializer, instance, representation):
+    state = getattr(instance, "state", None)
+    representation["state_name"] = getattr(state, "name", None)
+    representation["country_name"] = getattr(getattr(state, "country", None), "name", None)
+    return representation
 
 
-class AddressTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = AddressType
-        fields = ["id", "name", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+def _phone_to_representation(serializer, instance, representation):
+    representation["phonetype_name"] = getattr(getattr(instance, "phonetype", None), "name", None)
+    return representation
 
 
-class PhoneTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PhoneType
-        fields = ["id", "name", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+def _address_to_representation(serializer, instance, representation):
+    representation["city_name"] = getattr(getattr(instance, "city", None), "name", None)
+    representation["addresstype_name"] = getattr(getattr(instance, "addresstype", None), "name", None)
+    return representation
 
 
-class EmailTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = EmailType
-        fields = ["id", "name", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-class WebTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = WebType
-        fields = ["id", "name", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-class PhoneSerializer(serializers.ModelSerializer):
-    phonetype_name = serializers.CharField(source="phonetype.name", read_only=True)
-
-    class Meta:
-        model = Phone
-        fields = ["id", "phonetype", "phonetype_name", "phone", "is_whatsapp", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-class AddressSerializer(serializers.ModelSerializer):
-    city_name = serializers.CharField(source="city.name", read_only=True)
-    addresstype_name = serializers.CharField(source="addresstype.name", read_only=True)
-
-    class Meta:
-        model = Address
-        fields = ["id", "addresstype", "addresstype_name", "line", "city", "city_name", "postal_code", "landmark", "lat", "lon", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["id", "city_name", "addresstype_name", "created_at", "updated_at"]
-
-
-class EmailSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Email
-        fields = ["id", "email", "email_type", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-class WebsiteSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Website
-        fields = ["id", "website", "webtype", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-class ContactSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Contact
-        fields = ["id", "content_type", "contact_id", "is_verified", "related_contacts", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-class DocumentTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DocumentType
-        fields = ["id", "name", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-class DocumentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Document
-        fields = ["id", "document_type", "document_url", "description", "custom_fields", "is_active", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+CountrySerializer = build_model_serializer(
+    Country,
+    fields=["id", "name", "iso3", "iso2", "numeric_code", "phone_code", "currency", "currency_name", "lat", "lon"],
+    read_only_fields=("id",),
+)
+StateSerializer = build_model_serializer(
+    State,
+    fields=["id", "name", "state_code", "country", "country_name", "lat", "lon"],
+    read_only_fields=("id",),
+    to_representation_handler=_state_to_representation,
+)
+CitySerializer = build_model_serializer(
+    City,
+    fields=["id", "name", "state", "state_name", "country_name", "lat", "lon"],
+    read_only_fields=("id",),
+    to_representation_handler=_city_to_representation,
+)
+AddressTypeSerializer = build_model_serializer(
+    AddressType,
+    fields=["id", "name", "is_active", "created_at", "updated_at"],
+)
+PhoneTypeSerializer = build_model_serializer(
+    PhoneType,
+    fields=["id", "name", "is_active", "created_at", "updated_at"],
+)
+EmailTypeSerializer = build_model_serializer(
+    EmailType,
+    fields=["id", "name", "is_active", "created_at", "updated_at"],
+)
+WebTypeSerializer = build_model_serializer(
+    WebType,
+    fields=["id", "name", "is_active", "created_at", "updated_at"],
+)
+PhoneSerializer = build_model_serializer(
+    Phone,
+    fields=["id", "phonetype", "phonetype_name", "phone", "is_whatsapp", "is_active", "created_at", "updated_at"],
+    to_representation_handler=_phone_to_representation,
+)
+AddressSerializer = build_model_serializer(
+    Address,
+    fields=["id", "addresstype", "addresstype_name", "line", "city", "city_name", "postal_code", "landmark", "lat", "lon", "is_active", "created_at", "updated_at"],
+    read_only_fields=("city_name", "addresstype_name"),
+    to_representation_handler=_address_to_representation,
+)
+EmailSerializer = build_model_serializer(
+    Email,
+    fields=["id", "email", "email_type", "is_active", "created_at", "updated_at"],
+)
+WebsiteSerializer = build_model_serializer(
+    Website,
+    fields=["id", "website", "webtype", "is_active", "created_at", "updated_at"],
+)
+ContactSerializer = build_model_serializer(
+    Contact,
+    fields=["id", "content_type", "contact_id", "is_verified", "related_contacts", "is_active", "created_at", "updated_at"],
+)
+DocumentTypeSerializer = build_model_serializer(
+    DocumentType,
+    fields=["id", "name", "is_active", "created_at", "updated_at"],
+)
+DocumentSerializer = build_model_serializer(
+    Document,
+    fields=["id", "document_type", "document_url", "description", "custom_fields", "is_active", "created_at", "updated_at"],
+)

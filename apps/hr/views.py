@@ -1,276 +1,341 @@
-"""
-apps/hr/views.py
-"""
+"""apps/hr/views.py"""
 
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.common.permissions import IsTenantUser, IsManager
+from apps.common.api import build_action_route, build_model_viewset
+from apps.common.permissions import IsTenantUser
+
 from .models import (
-    Skill, SkillLevel, EmployeeSkill, Certification, Holiday,
-    MeetingSubject, Meeting, Vacancy, JobApplication,
-    Benefit, Deduction, EmployeeManagement,
-    EmployeeDeduction, EmployeeBenefit, EmployeeBankDetails,
-    LeaveType, Leave, LeaveBalance,
-    ScheduledShift, Attendance, OverTime, LoanType, StaffLoan,
-    Payroll, PayrollDetail, PerformanceEvaluation,
+    Attendance,
+    Benefit,
+    Certification,
+    Deduction,
+    EmployeeBankDetails,
+    EmployeeManagement,
+    EmployeeSkill,
+    Holiday,
+    JobApplication,
+    Leave,
+    LeaveBalance,
+    LeaveType,
+    LoanType,
+    Meeting,
+    MeetingSubject,
+    OverTime,
+    Payroll,
+    PayrollDetail,
+    PerformanceEvaluation,
+    ScheduledShift,
+    Skill,
+    SkillLevel,
+    StaffLoan,
+    Vacancy,
 )
 from .serializers import (
-    SkillSerializer, SkillLevelSerializer, CertificationSerializer,
-    HolidaySerializer, MeetingSubjectSerializer, MeetingSerializer,
-    VacancySerializer, JobApplicationSerializer,
-    BenefitSerializer, DeductionSerializer, EmployeeManagementSerializer,
-    EmployeeSkillSerializer, EmployeeBankDetailsSerializer,
-    LeaveTypeSerializer, LeaveSerializer, LeaveBalanceSerializer,
-    ScheduledShiftSerializer, AttendanceSerializer, OverTimeSerializer,
-    LoanTypeSerializer, StaffLoanSerializer,
-    PayrollSerializer, PayrollDetailSerializer, PerformanceEvaluationSerializer,
+    AttendanceSerializer,
+    BenefitSerializer,
+    CertificationSerializer,
+    DeductionSerializer,
+    EmployeeBankDetailsSerializer,
+    EmployeeManagementSerializer,
+    EmployeeSkillSerializer,
+    HolidaySerializer,
+    JobApplicationSerializer,
+    LeaveBalanceSerializer,
+    LeaveSerializer,
+    LeaveTypeSerializer,
+    LoanTypeSerializer,
+    MeetingSerializer,
+    MeetingSubjectSerializer,
+    OverTimeSerializer,
+    PayrollDetailSerializer,
+    PayrollSerializer,
+    PerformanceEvaluationSerializer,
+    ScheduledShiftSerializer,
+    SkillLevelSerializer,
+    SkillSerializer,
+    StaffLoanSerializer,
+    VacancySerializer,
 )
 
 
-class SkillViewSet(viewsets.ModelViewSet):
-    queryset = Skill.objects.all()
-    serializer_class = SkillSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["name"]
-    filterset_fields = ["is_active"]
+def _employee_attendance(self, request, *args, **kwargs):
+    employee = self.get_object()
+    queryset = Attendance.objects.filter(employee=employee).order_by("-date")
+    serializer = AttendanceSerializer(queryset, many=True, context=self.get_serializer_context())
+    return Response({"success": True, "data": serializer.data})
 
 
-class SkillLevelViewSet(viewsets.ModelViewSet):
-    queryset = SkillLevel.objects.select_related("skill")
-    serializer_class = SkillLevelSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["skill"]
+def _employee_leaves(self, request, *args, **kwargs):
+    employee = self.get_object()
+    queryset = Leave.objects.filter(staff=employee).order_by("-start_date")
+    serializer = LeaveSerializer(queryset, many=True, context=self.get_serializer_context())
+    return Response({"success": True, "data": serializer.data})
 
 
-class CertificationViewSet(viewsets.ModelViewSet):
-    queryset = Certification.objects.all()
-    serializer_class = CertificationSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["name"]
+def _employee_loans(self, request, *args, **kwargs):
+    employee = self.get_object()
+    queryset = StaffLoan.objects.filter(employee=employee).order_by("-created_at")
+    serializer = StaffLoanSerializer(queryset, many=True, context=self.get_serializer_context())
+    return Response({"success": True, "data": serializer.data})
 
 
-class HolidayViewSet(viewsets.ModelViewSet):
-    queryset = Holiday.objects.all()
-    serializer_class = HolidaySerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["is_public", "country"]
-    ordering_fields = ["date"]
+def _approve_leave(self, request, *args, **kwargs):
+    leave = self.get_object()
+    leave.status = "approved"
+    leave.approved_rejected_by = getattr(request.user, "staff_profile", None)
+    leave.save()
+    return Response({"success": True, "data": LeaveSerializer(leave, context=self.get_serializer_context()).data})
 
 
-class MeetingSubjectViewSet(viewsets.ModelViewSet):
-    queryset = MeetingSubject.objects.all()
-    serializer_class = MeetingSubjectSerializer
-    permission_classes = [IsTenantUser]
+def _reject_leave(self, request, *args, **kwargs):
+    leave = self.get_object()
+    leave.status = "rejected"
+    leave.save()
+    return Response({"success": True, "data": LeaveSerializer(leave, context=self.get_serializer_context()).data})
 
 
-class MeetingViewSet(viewsets.ModelViewSet):
-    queryset = Meeting.objects.select_related("room", "subject")
-    serializer_class = MeetingSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["status"]
-    ordering_fields = ["date", "created_at"]
+def _approve_overtime(self, request, *args, **kwargs):
+    overtime = self.get_object()
+    overtime.status = "approved"
+    overtime.approved_rejected_by = getattr(request.user, "staff_profile", None)
+    overtime.save()
+    return Response({"success": True, "data": OverTimeSerializer(overtime, context=self.get_serializer_context()).data})
 
 
-class VacancyViewSet(viewsets.ModelViewSet):
-    queryset = Vacancy.objects.select_related("department")
-    serializer_class = VacancySerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["department", "is_filled", "is_active"]
-    search_fields = ["title"]
+def _approve_staff_loan(self, request, *args, **kwargs):
+    loan = self.get_object()
+    loan.approval_status = "approved"
+    loan.save()
+    return Response({"success": True, "data": StaffLoanSerializer(loan, context=self.get_serializer_context()).data})
 
 
-class JobApplicationViewSet(viewsets.ModelViewSet):
-    queryset = JobApplication.objects.select_related("vacancy")
-    serializer_class = JobApplicationSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["vacancy", "status"]
+def _approve_payroll(self, request, *args, **kwargs):
+    payroll = self.get_object()
+    payroll.status = "approved"
+    payroll.save()
+    return Response({"success": True, "data": PayrollSerializer(payroll, context=self.get_serializer_context()).data})
 
 
-class BenefitViewSet(viewsets.ModelViewSet):
-    queryset = Benefit.objects.all()
-    serializer_class = BenefitSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["name"]
-    filterset_fields = ["benefit_rate_type", "frequency", "is_active"]
+def _process_payroll(self, request, *args, **kwargs):
+    payroll = self.get_object()
+    payroll.status = "paid"
+    payroll.save()
+    return Response({"success": True, "data": PayrollSerializer(payroll, context=self.get_serializer_context()).data})
 
 
-class DeductionViewSet(viewsets.ModelViewSet):
-    queryset = Deduction.objects.all()
-    serializer_class = DeductionSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["name"]
-    filterset_fields = ["deduction_type", "frequency", "is_active"]
+SkillViewSet = build_model_viewset(
+    Skill,
+    SkillSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["name"],
+    filterset_fields=["is_active"],
+)
 
+SkillLevelViewSet = build_model_viewset(
+    SkillLevel,
+    SkillLevelSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["skill"],
+    select_related_fields=["skill"],
+)
 
-class EmployeeManagementViewSet(viewsets.ModelViewSet):
-    queryset = EmployeeManagement.objects.select_related("staff", "position", "vacancy")
-    serializer_class = EmployeeManagementSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["is_employed", "salary_rate_period", "is_active"]
-    search_fields = ["staff__user__first_name", "staff__user__last_name"]
+CertificationViewSet = build_model_viewset(
+    Certification,
+    CertificationSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["name"],
+)
 
-    @action(detail=True, methods=["get"])
-    def attendance(self, request, pk=None):
-        emp = self.get_object()
-        qs = Attendance.objects.filter(employee=emp).order_by("-date")
-        serializer = AttendanceSerializer(qs, many=True)
-        return Response({"success": True, "data": serializer.data})
+HolidayViewSet = build_model_viewset(
+    Holiday,
+    HolidaySerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["is_public", "country"],
+    ordering_fields=["date"],
+)
 
-    @action(detail=True, methods=["get"])
-    def leaves(self, request, pk=None):
-        emp = self.get_object()
-        qs = Leave.objects.filter(staff=emp).order_by("-start_date")
-        serializer = LeaveSerializer(qs, many=True)
-        return Response({"success": True, "data": serializer.data})
+MeetingSubjectViewSet = build_model_viewset(
+    MeetingSubject,
+    MeetingSubjectSerializer,
+    permission_classes=[IsTenantUser],
+)
 
-    @action(detail=True, methods=["get"])
-    def loans(self, request, pk=None):
-        emp = self.get_object()
-        qs = StaffLoan.objects.filter(employee=emp).order_by("-created_at")
-        serializer = StaffLoanSerializer(qs, many=True)
-        return Response({"success": True, "data": serializer.data})
+MeetingViewSet = build_model_viewset(
+    Meeting,
+    MeetingSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["status"],
+    ordering_fields=["date", "created_at"],
+    select_related_fields=["room", "subject"],
+)
 
+VacancyViewSet = build_model_viewset(
+    Vacancy,
+    VacancySerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["department", "is_filled", "is_active"],
+    search_fields=["title"],
+    select_related_fields=["department"],
+)
 
-class EmployeeSkillViewSet(viewsets.ModelViewSet):
-    queryset = EmployeeSkill.objects.select_related("employee", "skill")
-    serializer_class = EmployeeSkillSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["employee", "skill", "proficiency_level"]
+JobApplicationViewSet = build_model_viewset(
+    JobApplication,
+    JobApplicationSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["vacancy", "status"],
+    select_related_fields=["vacancy"],
+)
 
+BenefitViewSet = build_model_viewset(
+    Benefit,
+    BenefitSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["name"],
+    filterset_fields=["benefit_rate_type", "frequency", "is_active"],
+)
 
-class EmployeeBankDetailsViewSet(viewsets.ModelViewSet):
-    queryset = EmployeeBankDetails.objects.select_related("employee", "bank")
-    serializer_class = EmployeeBankDetailsSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["employee", "bank"]
+DeductionViewSet = build_model_viewset(
+    Deduction,
+    DeductionSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["name"],
+    filterset_fields=["deduction_type", "frequency", "is_active"],
+)
 
+EmployeeManagementViewSet = build_model_viewset(
+    EmployeeManagement,
+    EmployeeManagementSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["is_employed", "salary_rate_period", "is_active"],
+    search_fields=["staff__user__first_name", "staff__user__last_name"],
+    select_related_fields=["staff", "position", "vacancy"],
+    extra_routes={
+        "attendance": build_action_route("attendance", _employee_attendance, methods=("get",), detail=True),
+        "leaves": build_action_route("leaves", _employee_leaves, methods=("get",), detail=True),
+        "loans": build_action_route("loans", _employee_loans, methods=("get",), detail=True),
+    },
+)
 
-class LeaveTypeViewSet(viewsets.ModelViewSet):
-    queryset = LeaveType.objects.all()
-    serializer_class = LeaveTypeSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["is_paid", "department", "is_active"]
-    search_fields = ["name"]
+EmployeeSkillViewSet = build_model_viewset(
+    EmployeeSkill,
+    EmployeeSkillSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["employee", "skill", "proficiency_level"],
+    select_related_fields=["employee", "skill"],
+)
 
+EmployeeBankDetailsViewSet = build_model_viewset(
+    EmployeeBankDetails,
+    EmployeeBankDetailsSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["employee", "bank"],
+    select_related_fields=["employee", "bank"],
+)
 
-class LeaveViewSet(viewsets.ModelViewSet):
-    queryset = Leave.objects.select_related("staff", "leave_type")
-    serializer_class = LeaveSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["status", "leave_type", "staff"]
-    ordering_fields = ["start_date", "created_at"]
+LeaveTypeViewSet = build_model_viewset(
+    LeaveType,
+    LeaveTypeSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["is_paid", "department", "is_active"],
+    search_fields=["name"],
+)
 
-    @action(detail=True, methods=["post"])
-    def approve(self, request, pk=None):
-        obj = self.get_object()
-        obj.status = "approved"
-        obj.approved_rejected_by = getattr(request.user, "staff_profile", None)
-        obj.save()
-        return Response({"success": True, "data": LeaveSerializer(obj).data})
+LeaveViewSet = build_model_viewset(
+    Leave,
+    LeaveSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["status", "leave_type", "staff"],
+    ordering_fields=["start_date", "created_at"],
+    select_related_fields=["staff", "leave_type"],
+    extra_routes={
+        "approve": build_action_route("approve", _approve_leave, methods=("post",), detail=True),
+        "reject": build_action_route("reject", _reject_leave, methods=("post",), detail=True),
+    },
+)
 
-    @action(detail=True, methods=["post"])
-    def reject(self, request, pk=None):
-        obj = self.get_object()
-        obj.status = "rejected"
-        obj.save()
-        return Response({"success": True, "data": LeaveSerializer(obj).data})
+LeaveBalanceViewSet = build_model_viewset(
+    LeaveBalance,
+    LeaveBalanceSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["employee", "leave_type", "year"],
+    select_related_fields=["employee", "leave_type"],
+)
 
+ScheduledShiftViewSet = build_model_viewset(
+    ScheduledShift,
+    ScheduledShiftSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["employee", "branch", "shift", "is_onleave"],
+    ordering_fields=["start_date"],
+    select_related_fields=["employee", "shift", "branch"],
+)
 
-class LeaveBalanceViewSet(viewsets.ModelViewSet):
-    queryset = LeaveBalance.objects.select_related("employee", "leave_type")
-    serializer_class = LeaveBalanceSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["employee", "leave_type", "year"]
+AttendanceViewSet = build_model_viewset(
+    Attendance,
+    AttendanceSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["employee", "branch", "status", "date"],
+    ordering_fields=["date", "check_in"],
+    select_related_fields=["employee", "branch"],
+)
 
+OverTimeViewSet = build_model_viewset(
+    OverTime,
+    OverTimeSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["status", "requested_by"],
+    select_related_fields=["attendance"],
+    extra_routes={
+        "approve": build_action_route("approve", _approve_overtime, methods=("post",), detail=True),
+    },
+)
 
-class ScheduledShiftViewSet(viewsets.ModelViewSet):
-    queryset = ScheduledShift.objects.select_related("employee", "shift", "branch")
-    serializer_class = ScheduledShiftSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["employee", "branch", "shift", "is_onleave"]
-    ordering_fields = ["start_date"]
+LoanTypeViewSet = build_model_viewset(
+    LoanType,
+    LoanTypeSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["name"],
+    filterset_fields=["is_active"],
+)
 
+StaffLoanViewSet = build_model_viewset(
+    StaffLoan,
+    StaffLoanSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["employee", "status", "approval_status"],
+    ordering_fields=["created_at"],
+    select_related_fields=["employee", "loan_type"],
+    extra_routes={
+        "approve": build_action_route("approve", _approve_staff_loan, methods=("post",), detail=True),
+    },
+)
 
-class AttendanceViewSet(viewsets.ModelViewSet):
-    queryset = Attendance.objects.select_related("employee", "branch")
-    serializer_class = AttendanceSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["employee", "branch", "status", "date"]
-    ordering_fields = ["date", "check_in"]
+PayrollViewSet = build_model_viewset(
+    Payroll,
+    PayrollSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["status"],
+    ordering_fields=["date", "created_at"],
+    extra_routes={
+        "approve": build_action_route("approve", _approve_payroll, methods=("post",), detail=True),
+        "process": build_action_route("process", _process_payroll, methods=("post",), detail=True),
+    },
+)
 
+PayrollDetailViewSet = build_model_viewset(
+    PayrollDetail,
+    PayrollDetailSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["payroll", "employee", "status"],
+    select_related_fields=["payroll", "employee"],
+)
 
-class OverTimeViewSet(viewsets.ModelViewSet):
-    queryset = OverTime.objects.select_related("attendance")
-    serializer_class = OverTimeSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["status", "requested_by"]
-
-    @action(detail=True, methods=["post"])
-    def approve(self, request, pk=None):
-        obj = self.get_object()
-        obj.status = "approved"
-        obj.approved_rejected_by = getattr(request.user, "staff_profile", None)
-        obj.save()
-        return Response({"success": True, "data": OverTimeSerializer(obj).data})
-
-
-class LoanTypeViewSet(viewsets.ModelViewSet):
-    queryset = LoanType.objects.all()
-    serializer_class = LoanTypeSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["name"]
-    filterset_fields = ["is_active"]
-
-
-class StaffLoanViewSet(viewsets.ModelViewSet):
-    queryset = StaffLoan.objects.select_related("employee", "loan_type")
-    serializer_class = StaffLoanSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["employee", "status", "approval_status"]
-    ordering_fields = ["created_at"]
-
-    @action(detail=True, methods=["post"])
-    def approve(self, request, pk=None):
-        obj = self.get_object()
-        obj.approval_status = "approved"
-        obj.save()
-        return Response({"success": True, "data": StaffLoanSerializer(obj).data})
-
-
-class PayrollViewSet(viewsets.ModelViewSet):
-    queryset = Payroll.objects.all()
-    serializer_class = PayrollSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["status"]
-    ordering_fields = ["date", "created_at"]
-
-    @action(detail=True, methods=["post"])
-    def approve(self, request, pk=None):
-        obj = self.get_object()
-        obj.status = "approved"
-        obj.save()
-        return Response({"success": True, "data": PayrollSerializer(obj).data})
-
-    @action(detail=True, methods=["post"])
-    def process(self, request, pk=None):
-        obj = self.get_object()
-        obj.status = "paid"
-        obj.save()
-        return Response({"success": True, "data": PayrollSerializer(obj).data})
-
-
-class PayrollDetailViewSet(viewsets.ModelViewSet):
-    queryset = PayrollDetail.objects.select_related("payroll", "employee")
-    serializer_class = PayrollDetailSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["payroll", "employee", "status"]
-
-
-class PerformanceEvaluationViewSet(viewsets.ModelViewSet):
-    queryset = PerformanceEvaluation.objects.select_related("employee", "evaluator")
-    serializer_class = PerformanceEvaluationSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["employee", "evaluator"]
-    ordering_fields = ["date", "created_at"]
+PerformanceEvaluationViewSet = build_model_viewset(
+    PerformanceEvaluation,
+    PerformanceEvaluationSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["employee", "evaluator"],
+    ordering_fields=["date", "created_at"],
+    select_related_fields=["employee", "evaluator"],
+)

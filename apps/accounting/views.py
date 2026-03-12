@@ -1,193 +1,206 @@
-"""
-apps/accounting/views.py
+"""apps/accounting/views.py"""
 
-DRF ViewSets for accounting models.
-"""
-
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.common.permissions import IsTenantUser, IsManager
+from apps.common.api import build_action_route, build_model_viewset
+from apps.common.permissions import IsTenantUser
+
 from .models import (
-    ChartsOfAccount,
     Account,
-    TransactionDoc,
-    Transaction,
-    Tax,
     Bank,
     BankAccount,
-    BudgetType,
-    BudgetRequest,
     BudgetAllocation,
+    BudgetRequest,
+    BudgetType,
+    ChartsOfAccount,
     ExpenseReport,
-    TransactionRequestType,
+    Tax,
+    Transaction,
+    TransactionDoc,
     TransactionRequest,
-    Invoice,
-    InvoiceLine,
-    Bill,
-    BillLine,
-    JournalEntry,
-    JournalEntryLine,
+    TransactionRequestType,
 )
-from .serializers import (
-    ChartsOfAccountSerializer,
+from apps.accounting.serializers import (
     AccountSerializer,
-    TransactionDocSerializer,
-    TransactionSerializer,
-    TaxSerializer,
-    BankSerializer,
     BankAccountSerializer,
-    BudgetTypeSerializer,
-    BudgetRequestSerializer,
+    BankSerializer,
     BudgetAllocationSerializer,
+    BudgetRequestSerializer,
+    BudgetTypeSerializer,
+    ChartsOfAccountSerializer,
     ExpenseReportSerializer,
-    TransactionRequestTypeSerializer,
+    TaxSerializer,
+    TransactionDocSerializer,
     TransactionRequestSerializer,
+    TransactionRequestTypeSerializer,
+    TransactionSerializer,
 )
 
 
-class ChartsOfAccountViewSet(viewsets.ModelViewSet):
-    queryset = ChartsOfAccount.objects.all()
-    serializer_class = ChartsOfAccountSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["account_type", "account_balance_type", "is_active"]
-    search_fields = ["name", "description"]
-    ordering_fields = ["acc_number", "name", "account_type"]
+def _account_balance(self, request, *args, **kwargs):
+    account = self.get_object()
+    return Response({"success": True, "data": {"balance": str(account.running_balance)}})
 
 
-class AccountViewSet(viewsets.ModelViewSet):
-    queryset = Account.objects.select_related("account_type")
-    serializer_class = AccountSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["account_type", "currency", "is_active"]
-    search_fields = ["acc_number", "account_type__name"]
-    ordering_fields = ["acc_number", "account_type__name", "currency"]
-
-    @action(detail=True, methods=["get"])
-    def balance(self, request, pk=None):
-        acc = self.get_object()
-        return Response({"success": True, "data": {"balance": str(acc.running_balance)}})
+def _post_transaction_doc(self, request, *args, **kwargs):
+    document = self.get_object()
+    document.posted = True
+    document.save(update_fields=["posted"])
+    return Response({"success": True, "data": TransactionDocSerializer(document, context=self.get_serializer_context()).data})
 
 
-class TransactionDocViewSet(viewsets.ModelViewSet):
-    queryset = TransactionDoc.objects.all()
-    serializer_class = TransactionDocSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["posted"]
-    search_fields = ["description", "reference"]
-    ordering_fields = ["date", "created_at"]
-
-    @action(detail=True, methods=["post"])
-    def post_doc(self, request, pk=None):
-        doc = self.get_object()
-        doc.posted = True
-        doc.save(update_fields=["posted"])
-        return Response({"success": True, "data": TransactionDocSerializer(doc).data})
+def _approve_budget_request(self, request, *args, **kwargs):
+    budget_request = self.get_object()
+    budget_request.status = "approved"
+    budget_request.approving_staff = getattr(request.user, "staff_profile", None)
+    budget_request.save()
+    return Response({"success": True, "data": BudgetRequestSerializer(budget_request, context=self.get_serializer_context()).data})
 
 
-class TransactionViewSet(viewsets.ModelViewSet):
-    queryset = Transaction.objects.select_related("notes", "account", "coa")
-    serializer_class = TransactionSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["transaction_type", "account"]
-    ordering_fields = ["notes__date", "created_at"]
+def _reject_budget_request(self, request, *args, **kwargs):
+    budget_request = self.get_object()
+    budget_request.status = "rejected"
+    budget_request.save()
+    return Response({"success": True, "data": BudgetRequestSerializer(budget_request, context=self.get_serializer_context()).data})
 
 
-class TaxViewSet(viewsets.ModelViewSet):
-    queryset = Tax.objects.all()
-    serializer_class = TaxSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["tax_type", "is_active", "is_tax_recoverable"]
-    search_fields = ["name"]
-    ordering_fields = ["name", "effective_date"]
+def _approve_transaction_request(self, request, *args, **kwargs):
+    transaction_request = self.get_object()
+    transaction_request.status = "approved"
+    transaction_request.save()
+    return Response({"success": True, "data": TransactionRequestSerializer(transaction_request, context=self.get_serializer_context()).data})
 
 
-class BankViewSet(viewsets.ModelViewSet):
-    queryset = Bank.objects.all()
-    serializer_class = BankSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["name"]
-    filterset_fields = ["is_active"]
+def _reject_transaction_request(self, request, *args, **kwargs):
+    transaction_request = self.get_object()
+    transaction_request.status = "rejected"
+    transaction_request.save()
+    return Response({"success": True, "data": TransactionRequestSerializer(transaction_request, context=self.get_serializer_context()).data})
 
 
-class BankAccountViewSet(viewsets.ModelViewSet):
-    queryset = BankAccount.objects.select_related("bank")
-    serializer_class = BankAccountSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["bank", "account_type", "is_active"]
-    search_fields = ["name", "account_number"]
+ChartsOfAccountViewSet = build_model_viewset(
+    ChartsOfAccount,
+    ChartsOfAccountSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["account_type", "account_balance_type", "is_active"],
+    search_fields=["name", "description"],
+    ordering_fields=["acc_number", "name", "account_type"],
+)
 
+AccountViewSet = build_model_viewset(
+    Account,
+    AccountSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["account_type", "currency", "is_active"],
+    search_fields=["acc_number", "account_type__name"],
+    ordering_fields=["acc_number", "account_type__name", "currency"],
+    select_related_fields=["account_type"],
+    extra_routes={
+        "balance": build_action_route("balance", _account_balance, methods=("get",), detail=True),
+    },
+)
 
-class BudgetTypeViewSet(viewsets.ModelViewSet):
-    queryset = BudgetType.objects.select_related("department")
-    serializer_class = BudgetTypeSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["department", "is_active"]
-    search_fields = ["name"]
+TransactionDocViewSet = build_model_viewset(
+    TransactionDoc,
+    TransactionDocSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["posted"],
+    search_fields=["description", "reference"],
+    ordering_fields=["date", "created_at"],
+    extra_routes={
+        "post_doc": build_action_route("post_doc", _post_transaction_doc, methods=("post",), detail=True),
+    },
+)
 
+TransactionViewSet = build_model_viewset(
+    Transaction,
+    TransactionSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["transaction_type", "account"],
+    ordering_fields=["notes__date", "created_at"],
+    select_related_fields=["notes", "account", "coa"],
+)
 
-class BudgetRequestViewSet(viewsets.ModelViewSet):
-    queryset = BudgetRequest.objects.select_related("budget_type", "requested_by")
-    serializer_class = BudgetRequestSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["status", "budget_type"]
-    ordering_fields = ["date_requested", "created_at"]
+TaxViewSet = build_model_viewset(
+    Tax,
+    TaxSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["tax_type", "is_active", "is_tax_recoverable"],
+    search_fields=["name"],
+    ordering_fields=["name", "effective_date"],
+)
 
-    @action(detail=True, methods=["post"])
-    def approve(self, request, pk=None):
-        obj = self.get_object()
-        obj.status = "approved"
-        obj.approving_staff = request.user.staff_profile if hasattr(request.user, "staff_profile") else None
-        obj.save()
-        return Response({"success": True, "data": BudgetRequestSerializer(obj).data})
+BankViewSet = build_model_viewset(
+    Bank,
+    BankSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["name"],
+    filterset_fields=["is_active"],
+)
 
-    @action(detail=True, methods=["post"])
-    def reject(self, request, pk=None):
-        obj = self.get_object()
-        obj.status = "rejected"
-        obj.save()
-        return Response({"success": True, "data": BudgetRequestSerializer(obj).data})
+BankAccountViewSet = build_model_viewset(
+    BankAccount,
+    BankAccountSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["bank", "account_type", "is_active"],
+    search_fields=["name", "account_number"],
+    select_related_fields=["bank"],
+)
 
+BudgetTypeViewSet = build_model_viewset(
+    BudgetType,
+    BudgetTypeSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["department", "is_active"],
+    search_fields=["name"],
+    select_related_fields=["department"],
+)
 
-class BudgetAllocationViewSet(viewsets.ModelViewSet):
-    queryset = BudgetAllocation.objects.select_related("budget_request")
-    serializer_class = BudgetAllocationSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["status"]
+BudgetRequestViewSet = build_model_viewset(
+    BudgetRequest,
+    BudgetRequestSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["status", "budget_type"],
+    ordering_fields=["date_requested", "created_at"],
+    select_related_fields=["budget_type", "requested_by"],
+    extra_routes={
+        "approve": build_action_route("approve", _approve_budget_request, methods=("post",), detail=True),
+        "reject": build_action_route("reject", _reject_budget_request, methods=("post",), detail=True),
+    },
+)
 
+BudgetAllocationViewSet = build_model_viewset(
+    BudgetAllocation,
+    BudgetAllocationSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["status"],
+    select_related_fields=["budget_request"],
+)
 
-class ExpenseReportViewSet(viewsets.ModelViewSet):
-    queryset = ExpenseReport.objects.select_related("budget_allocation", "staff")
-    serializer_class = ExpenseReportSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["status", "staff"]
-    ordering_fields = ["incurred_on", "created_at"]
+ExpenseReportViewSet = build_model_viewset(
+    ExpenseReport,
+    ExpenseReportSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["status", "staff"],
+    ordering_fields=["incurred_on", "created_at"],
+    select_related_fields=["budget_allocation", "staff"],
+)
 
+TransactionRequestTypeViewSet = build_model_viewset(
+    TransactionRequestType,
+    TransactionRequestTypeSerializer,
+    permission_classes=[IsTenantUser],
+    search_fields=["name"],
+)
 
-class TransactionRequestTypeViewSet(viewsets.ModelViewSet):
-    queryset = TransactionRequestType.objects.all()
-    serializer_class = TransactionRequestTypeSerializer
-    permission_classes = [IsTenantUser]
-    search_fields = ["name"]
-
-
-class TransactionRequestViewSet(viewsets.ModelViewSet):
-    queryset = TransactionRequest.objects.select_related("transaction_type", "approving_staff")
-    serializer_class = TransactionRequestSerializer
-    permission_classes = [IsTenantUser]
-    filterset_fields = ["status", "transaction_type"]
-
-    @action(detail=True, methods=["post"])
-    def approve(self, request, pk=None):
-        obj = self.get_object()
-        obj.status = "approved"
-        obj.save()
-        return Response({"success": True, "data": TransactionRequestSerializer(obj).data})
-
-    @action(detail=True, methods=["post"])
-    def reject(self, request, pk=None):
-        obj = self.get_object()
-        obj.status = "rejected"
-        obj.save()
-        return Response({"success": True, "data": TransactionRequestSerializer(obj).data})
+TransactionRequestViewSet = build_model_viewset(
+    TransactionRequest,
+    TransactionRequestSerializer,
+    permission_classes=[IsTenantUser],
+    filterset_fields=["status", "transaction_type"],
+    select_related_fields=["transaction_type", "approving_staff"],
+    extra_routes={
+        "approve": build_action_route("approve", _approve_transaction_request, methods=("post",), detail=True),
+        "reject": build_action_route("reject", _reject_transaction_request, methods=("post",), detail=True),
+    },
+)

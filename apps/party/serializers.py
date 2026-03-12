@@ -1,8 +1,4 @@
-"""
-apps/party/serializers.py
-
-DRF serializers for User, Profiles, Authentication, and Contact models.
-"""
+"""apps/party/serializers.py"""
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
@@ -10,29 +6,25 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+from apps.common.api import build_model_serializer
+
 from .models import (
+    Address,
+    AgentProfile,
+    ClientProfile,
+    ContactPoint,
+    Document,
+    DocumentType,
     Occupation,
     StaffProfile,
-    ClientProfile,
     SupplierProfile,
-    AgentProfile,
-    ContactPoint,
-    Address,
-    DocumentType,
-    Document,
     UserType,
 )
 
 User = get_user_model()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Auth Serializers
-# ─────────────────────────────────────────────────────────────────────────────
-
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """JWT with extra claims: user_type, is_manager, groups, permissions."""
-
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
@@ -42,15 +34,12 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["full_name"] = user.get_full_name()
         token["is_superuser"] = user.is_superuser
         token["is_staff"] = user.is_staff
-        # Manager flag (staff only)
         try:
             token["is_manager"] = user.staff_profile.is_manager
         except Exception:
             token["is_manager"] = False
         token["groups"] = list(user.groups.values_list("name", flat=True))
-        token["permissions"] = list(
-            user.get_all_permissions()
-        )
+        token["permissions"] = list(user.get_all_permissions())
         return token
 
 
@@ -68,10 +57,7 @@ class RegisterStaffSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        return User.objects.create_user(
-            user_type=UserType.STAFF,
-            **validated_data,
-        )
+        return User.objects.create_user(user_type=UserType.STAFF, **validated_data)
 
 
 class RegisterClientSerializer(serializers.ModelSerializer):
@@ -88,10 +74,7 @@ class RegisterClientSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        return User.objects.create_user(
-            user_type=UserType.CLIENT,
-            **validated_data,
-        )
+        return User.objects.create_user(user_type=UserType.CLIENT, **validated_data)
 
 
 class RegisterSupplierSerializer(serializers.ModelSerializer):
@@ -108,10 +91,7 @@ class RegisterSupplierSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        return User.objects.create_user(
-            user_type=UserType.SUPPLIER,
-            **validated_data,
-        )
+        return User.objects.create_user(user_type=UserType.SUPPLIER, **validated_data)
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -125,42 +105,50 @@ class ChangePasswordSerializer(serializers.Serializer):
         return data
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Occupation
-# ─────────────────────────────────────────────────────────────────────────────
-
-class OccupationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Occupation
-        fields = ["id", "name", "definition", "task", "isco_code", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+def _user_light_to_representation(serializer, instance, representation):
+    representation["full_name"] = instance.get_full_name()
+    return representation
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# User
-# ─────────────────────────────────────────────────────────────────────────────
-
-class UserLightSerializer(serializers.ModelSerializer):
-    """Minimal representation for FK/nested use."""
-    full_name = serializers.CharField(source="get_full_name", read_only=True)
-
-    class Meta:
-        model = User
-        fields = ["id", "email", "full_name", "user_type", "avatar"]
-        read_only_fields = fields
+def _user_to_representation(serializer, instance, representation):
+    representation["full_name"] = instance.get_full_name()
+    return representation
 
 
-class UserSerializer(serializers.ModelSerializer):
-    full_name = serializers.CharField(source="get_full_name", read_only=True)
+def _staff_profile_to_representation(serializer, instance, representation):
+    representation["branches_info"] = [{"id": str(branch.id), "name": branch.name} for branch in instance.branches.all()]
+    return representation
 
-    class Meta:
-        model = User
-        fields = [
-            "id", "email", "first_name", "last_name", "full_name",
-            "user_type", "avatar", "phone", "is_active", "is_staff",
-            "is_superuser", "date_joined", "last_login",
-        ]
-        read_only_fields = ["id", "is_staff", "is_superuser", "date_joined", "last_login"]
+
+def _address_to_representation(serializer, instance, representation):
+    representation["city_name"] = getattr(getattr(instance, "city", None), "name", None)
+    representation["state_name"] = getattr(getattr(instance, "state", None), "name", None)
+    representation["country_name"] = getattr(getattr(instance, "country", None), "name", None)
+    return representation
+
+
+OccupationSerializer = build_model_serializer(
+    Occupation,
+    fields=["id", "name", "definition", "task", "isco_code", "created_at", "updated_at"],
+)
+
+UserLightSerializer = build_model_serializer(
+    User,
+    fields=["id", "email", "user_type", "avatar"],
+    read_only_fields=("email", "user_type", "avatar"),
+    to_representation_handler=_user_light_to_representation,
+)
+
+UserSerializer = build_model_serializer(
+    User,
+    fields=[
+        "id", "email", "first_name", "last_name",
+        "user_type", "avatar", "phone", "is_active", "is_staff",
+        "is_superuser", "date_joined", "last_login",
+    ],
+    read_only_fields=("is_staff", "is_superuser", "date_joined", "last_login"),
+    to_representation_handler=_user_to_representation,
+)
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
@@ -169,133 +157,91 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         fields = ["first_name", "last_name", "avatar", "phone"]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Profiles
-# ─────────────────────────────────────────────────────────────────────────────
+StaffProfileSerializer = build_model_serializer(
+    StaffProfile,
+    fields=[
+        "id", "user", "is_manager", "branches", "accounts",
+        "department", "occupation",
+        "employee_id", "date_of_birth", "hire_date", "national_id",
+        "emergency_contact_name", "emergency_contact_phone",
+        "created_at", "updated_at",
+    ],
+    read_only_fields=("accounts",),
+    nested_serializers={"user": {"serializer": UserLightSerializer, "read_only": True}},
+    to_representation_handler=_staff_profile_to_representation,
+)
 
-class StaffProfileSerializer(serializers.ModelSerializer):
-    id = serializers.UUIDField(source="pk", read_only=True)
-    user = UserLightSerializer(read_only=True)
-    branches_info = serializers.SerializerMethodField()
+ClientProfileSerializer = build_model_serializer(
+    ClientProfile,
+    fields=[
+        "id", "user", "department", "payment_class",
+        "loyalty_points", "credit_limit", "payment_terms", "tier",
+        "date_of_birth", "national_id", "notes",
+        "created_at", "updated_at",
+    ],
+    read_only_fields=("client_account",),
+    nested_serializers={"user": {"serializer": UserLightSerializer, "read_only": True}},
+)
 
-    class Meta:
-        model = StaffProfile
-        fields = [
-            "id", "user", "is_manager", "branches", "branches_info", "accounts",
-            "department", "occupation",
-            "employee_id", "date_of_birth", "hire_date", "national_id",
-            "emergency_contact_name", "emergency_contact_phone",
-            "created_at", "updated_at",
-        ]
-        read_only_fields = ["id", "accounts", "created_at", "updated_at"]
+SupplierProfileSerializer = build_model_serializer(
+    SupplierProfile,
+    fields=[
+        "id", "user", "department", "company_name", "registration_number",
+        "payment_class", "tax_id", "payment_terms_days", "is_approved",
+        "rating", "notes",
+        "created_at", "updated_at",
+    ],
+    read_only_fields=("vendor_account", "rating"),
+    nested_serializers={"user": {"serializer": UserLightSerializer, "read_only": True}},
+)
 
-    def get_branches_info(self, obj):
-        return [{"id": str(b.id), "name": b.name} for b in obj.branches.all()]
+AgentProfileSerializer = build_model_serializer(
+    AgentProfile,
+    fields=[
+        "id", "user", "agent_type", "capabilities", "assigned_modules",
+        "status", "api_key",
+        "created_at", "updated_at",
+    ],
+    read_only_fields=("api_key",),
+    nested_serializers={"user": {"serializer": UserLightSerializer, "read_only": True}},
+)
 
+ContactPointSerializer = build_model_serializer(
+    ContactPoint,
+    fields=[
+        "id", "content_type", "object_id",
+        "contact_type", "value", "label",
+        "is_primary", "is_verified", "is_whatsapp",
+        "created_at", "updated_at",
+    ],
+)
 
-class ClientProfileSerializer(serializers.ModelSerializer):
-    id = serializers.UUIDField(source="pk", read_only=True)
-    user = UserLightSerializer(read_only=True)
+AddressSerializer = build_model_serializer(
+    Address,
+    fields=[
+        "id", "content_type", "object_id",
+        "address_type", "line1", "line2",
+        "city", "state", "country", "postal_code",
+        "is_primary", "latitude", "longitude",
+        "created_at", "updated_at",
+    ],
+    to_representation_handler=_address_to_representation,
+)
 
-    class Meta:
-        model = ClientProfile
-        fields = [
-            "id", "user", "department", "payment_class",
-            "loyalty_points", "credit_limit", "payment_terms", "tier",
-            "date_of_birth", "national_id", "notes",
-            "created_at", "updated_at",
-        ]
-        read_only_fields = ["id", "client_account", "created_at", "updated_at"]
+DocumentTypeSerializer = build_model_serializer(
+    DocumentType,
+    fields=["id", "name", "description", "created_at", "updated_at"],
+)
 
+DocumentSerializer = build_model_serializer(
+    Document,
+    fields=[
+        "id", "document_type", "document_url", "description",
+        "custom_fields", "content_type", "object_id",
+        "created_at", "updated_at",
+    ],
+)
 
-class SupplierProfileSerializer(serializers.ModelSerializer):
-    id = serializers.UUIDField(source="pk", read_only=True)
-    user = UserLightSerializer(read_only=True)
-
-    class Meta:
-        model = SupplierProfile
-        fields = [
-            "id", "user", "department", "company_name", "registration_number",
-            "payment_class", "tax_id", "payment_terms_days", "is_approved",
-            "rating", "notes",
-            "created_at", "updated_at",
-        ]
-        read_only_fields = ["id", "vendor_account", "rating", "created_at", "updated_at"]
-
-
-class AgentProfileSerializer(serializers.ModelSerializer):
-    id = serializers.UUIDField(source="pk", read_only=True)
-    user = UserLightSerializer(read_only=True)
-
-    class Meta:
-        model = AgentProfile
-        fields = [
-            "id", "user", "agent_type", "capabilities", "assigned_modules",
-            "status", "api_key",
-            "created_at", "updated_at",
-        ]
-        read_only_fields = ["id", "api_key", "created_at", "updated_at"]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Contact
-# ─────────────────────────────────────────────────────────────────────────────
-
-class ContactPointSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ContactPoint
-        fields = [
-            "id", "content_type", "object_id",
-            "contact_type", "value", "label",
-            "is_primary", "is_verified", "is_whatsapp",
-            "created_at", "updated_at",
-        ]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-class AddressSerializer(serializers.ModelSerializer):
-    city_name = serializers.CharField(source="city.name", read_only=True)
-    state_name = serializers.CharField(source="state.name", read_only=True)
-    country_name = serializers.CharField(source="country.name", read_only=True)
-
-    class Meta:
-        model = Address
-        fields = [
-            "id", "content_type", "object_id",
-            "address_type", "line1", "line2",
-            "city", "city_name", "state", "state_name",
-            "country", "country_name", "postal_code",
-            "is_primary", "latitude", "longitude",
-            "created_at", "updated_at",
-        ]
-        read_only_fields = ["id", "city_name", "state_name", "country_name", "created_at", "updated_at"]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Documents
-# ─────────────────────────────────────────────────────────────────────────────
-
-class DocumentTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DocumentType
-        fields = ["id", "name", "description", "created_at", "updated_at"]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-class DocumentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Document
-        fields = [
-            "id", "document_type", "document_url", "description",
-            "custom_fields", "content_type", "object_id",
-            "created_at", "updated_at",
-        ]
-        read_only_fields = ["id", "created_at", "updated_at"]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Current User (me endpoint)
-# ─────────────────────────────────────────────────────────────────────────────
 
 class MeSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source="get_full_name", read_only=True)
@@ -325,17 +271,17 @@ class MeSerializer(serializers.ModelSerializer):
                 return StaffProfileSerializer(obj.staff_profile).data
             except Exception:
                 return None
-        elif obj.user_type == "client":
+        if obj.user_type == "client":
             try:
                 return ClientProfileSerializer(obj.client_profile).data
             except Exception:
                 return None
-        elif obj.user_type == "supplier":
+        if obj.user_type == "supplier":
             try:
                 return SupplierProfileSerializer(obj.supplier_profile).data
             except Exception:
                 return None
-        elif obj.user_type == "agent":
+        if obj.user_type == "agent":
             try:
                 return AgentProfileSerializer(obj.agent_profile).data
             except Exception:
