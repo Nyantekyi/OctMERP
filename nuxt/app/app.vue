@@ -1,4 +1,33 @@
-<script setup>
+<script setup lang="ts">
+const { user, isAuthenticated, refreshUser, signOut } = useErpSession()
+const route = useRoute()
+
+await useAsyncData('erp-session-bootstrap', async () => {
+  if (user.value) {
+    return user.value
+  }
+
+  return await refreshUser()
+})
+
+const userName = computed(() => {
+  const fullName = [user.value?.first_name, user.value?.last_name].filter(Boolean).join(' ')
+  return fullName || user.value?.email || 'ERP user'
+})
+
+const signingOut = ref(false)
+
+async function onSignOut() {
+  signingOut.value = true
+
+  try {
+    await signOut()
+    await navigateTo('/')
+  } finally {
+    signingOut.value = false
+  }
+}
+
 useHead({
   meta: [
     { name: 'viewport', content: 'width=device-width, initial-scale=1' }
@@ -11,68 +40,58 @@ useHead({
   }
 })
 
-const title = 'Nuxt Starter Template'
-const description = 'A production-ready starter template powered by Nuxt UI. Build beautiful, accessible, and performant applications in minutes, not hours.'
-
 useSeoMeta({
-  title,
-  description,
-  ogTitle: title,
-  ogDescription: description,
-  ogImage: 'https://ui.nuxt.com/assets/templates/nuxt/starter-light.png',
-  twitterImage: 'https://ui.nuxt.com/assets/templates/nuxt/starter-light.png',
+  title: 'Golderp Cockpit',
+  description: 'Nuxt frontend for the ERP Django REST Framework backend.',
+  ogTitle: 'Golderp Cockpit',
+  ogDescription: 'Nuxt frontend for the ERP Django REST Framework backend.',
   twitterCard: 'summary_large_image'
 })
 </script>
 
 <template>
-  <UApp>
-    <UHeader>
-      <template #left>
-        <NuxtLink to="/">
-          <AppLogo class="w-auto h-6 shrink-0" />
-        </NuxtLink>
+  <div class="erp-shell">
+    <div class="mx-auto flex min-h-screen max-w-[1440px] flex-col px-4 py-4 sm:px-6 lg:px-8">
+      <header class="erp-surface px-5 py-4 sm:px-6 lg:px-7">
+        <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div class="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center">
+            <NuxtLink to="/" class="min-w-0 text-inherit no-underline">
+              <AppLogo />
+            </NuxtLink>
 
-        <TemplateMenu />
-      </template>
+            <TemplateMenu />
+          </div>
 
-      <template #right>
-        <UColorModeButton />
+          <div class="flex flex-wrap items-center gap-3">
+            <span class="erp-pill text-sm text-slate-600">
+              {{ isAuthenticated ? 'Connected to Django API' : 'Signed out' }}
+            </span>
 
-        <UButton
-          to="https://github.com/nuxt-ui-templates/starter"
-          target="_blank"
-          icon="i-simple-icons-github"
-          aria-label="GitHub"
-          color="neutral"
-          variant="ghost"
-        />
-      </template>
-    </UHeader>
+            <span class="erp-pill text-sm text-slate-600">
+              {{ route.path }}
+            </span>
 
-    <UMain>
-      <NuxtPage />
-    </UMain>
+            <div v-if="isAuthenticated" class="flex items-center gap-3">
+              <div class="rounded-2xl bg-slate-950 px-3 py-2 text-sm text-white">
+                <strong>{{ userName }}</strong>
+                <span class="ml-2 text-slate-300">{{ user?.user_type }}</span>
+              </div>
 
-    <USeparator icon="i-simple-icons-nuxtdotjs" />
+              <button type="button" class="erp-button erp-button--secondary" :disabled="signingOut" @click="onSignOut">
+                {{ signingOut ? 'Signing out...' : 'Sign out' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
 
-    <UFooter>
-      <template #left>
-        <p class="text-sm text-muted">
-          Built with Nuxt UI • © {{ new Date().getFullYear() }}
-        </p>
-      </template>
+      <main class="flex-1 py-6">
+        <NuxtPage />
+      </main>
 
-      <template #right>
-        <UButton
-          to="https://github.com/nuxt-ui-templates/starter"
-          target="_blank"
-          icon="i-simple-icons-github"
-          aria-label="GitHub"
-          color="neutral"
-          variant="ghost"
-        />
-      </template>
-    </UFooter>
-  </UApp>
+      <footer class="px-2 pb-4 text-sm text-slate-500 sm:px-4">
+        Golderp Cockpit renders live data from the mounted DRF apps under <strong>/api/v1</strong> and keeps auth on the Nuxt server layer.
+      </footer>
+    </div>
+  </div>
 </template>
