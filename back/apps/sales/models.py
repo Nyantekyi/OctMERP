@@ -86,8 +86,8 @@ class Quotation(createdtimestamp_uid, activearchlockedMixin, CompanyMixin):
 
 class QuotationLine(createdtimestamp_uid):
     quotation = models.ForeignKey(Quotation, on_delete=models.CASCADE, related_name="lines")
-    product = models.ForeignKey("inventory.Product", on_delete=models.PROTECT, related_name="quotation_lines")
-    variant = models.ForeignKey("inventory.ProductVariant", null=True, blank=True, on_delete=models.SET_NULL, related_name="quotation_lines")
+    product = models.ForeignKey("inventory.Item", on_delete=models.PROTECT, related_name="quotation_lines")
+    variant = models.ForeignKey("inventory.itemvariant", null=True, blank=True, on_delete=models.SET_NULL, related_name="quotation_lines")
     quantity = models.DecimalField(max_digits=14, decimal_places=3)
     unit_price = MoneyField(max_digits=14, decimal_places=2, default=0, default_currency=default_currency)
     discount = MoneyField(max_digits=14, decimal_places=2, default=0, default_currency=default_currency)
@@ -155,8 +155,8 @@ class SalesOrder(createdtimestamp_uid, activearchlockedMixin, CompanyMixin):
 
 class SalesOrderLine(createdtimestamp_uid):
     order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE, related_name="lines")
-    product = models.ForeignKey("inventory.Product", on_delete=models.PROTECT, related_name="sales_lines")
-    variant = models.ForeignKey("inventory.ProductVariant", null=True, blank=True, on_delete=models.SET_NULL, related_name="sales_lines")
+    product = models.ForeignKey("inventory.Item", on_delete=models.PROTECT, related_name="sales_lines")
+    variant = models.ForeignKey("inventory.itemvariant", null=True, blank=True, on_delete=models.SET_NULL, related_name="sales_lines")
     quantity = models.DecimalField(max_digits=14, decimal_places=3)
     unit_price = MoneyField(max_digits=14, decimal_places=2, default=0, default_currency=default_currency)
     discount = MoneyField(max_digits=14, decimal_places=2, default=0, default_currency=default_currency)
@@ -228,51 +228,55 @@ def update_sales_order_totals_on_line_delete(sender, instance, **kwargs):
 
 @receiver(post_save, sender=Delivery)
 def create_stock_moves_for_delivery(sender, instance, created, **kwargs):
-    """Create OUT stock moves when a delivery is marked delivered."""
+    """
+    Create an outbound StockLedgerEntry when a delivery is marked delivered.
+    Detailed per-lot movement must be posted separately via itemInvJournalEntry.
+    """
     if instance.status != Delivery.DeliveryStatus.DELIVERED:
         return
 
-    warehouse_model = apps.get_model("inventory", "Warehouse")
-    stock_move_model = apps.get_model("inventory", "StockMove")
-    warehouse = warehouse_model.objects.filter(branch=instance.sales_order.branch).first()
-    if warehouse is None:
+    StockLedgerEntry = apps.get_model("inventory", "StockLedgerEntry")
+    ContentType = apps.get_model("contenttypes", "ContentType")
+    ct = ContentType.objects.get_for_model(instance)
+
+    branch = instance.sales_order.branch
+    if branch is None:
         return
 
-    for line in instance.sales_order.lines.select_related("product", "variant"):
-        stock_move_model.objects.get_or_create(
-            product=line.product,
-            variant=line.variant,
-            warehouse=warehouse,
-            move_type="out",
-            reference=f"DEL-{instance.delivery_number}",
-            defaults={
-                "quantity": line.quantity,
-                "notes": f"Auto move from delivery {instance.delivery_number}",
-            },
-        )
+    StockLedgerEntry.objects.get_or_create(
+        branch=branch,
+        content_type=ct,
+        object_id=instance.pk,
+        defaults={
+            "transaction_type": "Credit",
+            "inventorytransacttype": "Decrease",
+        },
+    )
 
 
 @receiver(post_save, sender=SalesReturn)
-def create_stock_moves_for_return(sender, instance, created, **kwargs):
-    """Create RETURN stock moves when return is received."""
+def create_stock_ledger_for_return(sender, instance, created, **kwargs):
+    """
+    Create an inbound StockLedgerEntry when a sales return is received.
+    Detailed per-lot movement must be posted separately via itemInvJournalEntry.
+    """
     if instance.status != SalesReturn.ReturnStatus.RECEIVED:
         return
 
-    stock_move_model = apps.get_model("inventory", "StockMove")
-    warehouse_model = apps.get_model("inventory", "Warehouse")
-    warehouse = warehouse_model.objects.filter(branch=instance.sales_order.branch).first()
-    if warehouse is None:
+    StockLedgerEntry = apps.get_model("inventory", "StockLedgerEntry")
+    ContentType = apps.get_model("contenttypes", "ContentType")
+    ct = ContentType.objects.get_for_model(instance)
+
+    branch = instance.sales_order.branch
+    if branch is None:
         return
 
-    for line in instance.sales_order.lines.select_related("product", "variant"):
-        stock_move_model.objects.get_or_create(
-            product=line.product,
-            variant=line.variant,
-            warehouse=warehouse,
-            move_type="return",
-            reference=f"RET-{instance.pk}",
-            defaults={
-                "quantity": line.quantity,
-                "notes": f"Auto move from sales return {instance.pk}",
-            },
-        )
+    StockLedgerEntry.objects.get_or_create(
+        branch=branch,
+        content_type=ct,
+        object_id=instance.pk,
+        defaults={
+            "transaction_type": "Debit",
+            "inventorytransacttype": "Increase",
+        },
+    )

@@ -1,40 +1,76 @@
 from apps.common.api import build_model_viewset
 from apps.inventory.api.serializers import (
-	BarcodeSerializer, BrandSerializer, CategorySerializer, FormSerializer,
-	ItemInventoryLotSerializer, ItemLotSerializer, ItemPricingDepartmentSerializer,
-	ManufacturerBrandSerializer, ManufacturerSerializer, PackSizeSerializer,
-	ProductSerializer, ProductVariantSerializer, ReorderRuleSerializer,
-	StockAlertSerializer, StockMoveSerializer, UnitOfMeasureSerializer,
-	WarehouseLocationSerializer, WarehouseSerializer,
+    BarcodeSerializer,
+    CategorySerializer,
+    ItemInvJournalEntrySerializer,
+    ItemInventoryLotSerializer,
+    ItemInventoryLotVariantSerializer,
+    ItemLotSerializer,
+    ItemPricingDepartmentSerializer,
+    ItemSerializer,
+    ItemvariantSerializer,
+    ItemvariantpricesSerializer,
+    ManufacturerBrandSerializer,
+    ManufacturerSerializer,
+    ReorderRuleSerializer,
+    SellingRulesSerializer,
+    StockAlertSerializer,
+    StockLedgerEntrySerializer,
+    StockLotCostValuationSerializer,
+    UnitOfMeasureSerializer,
+    UnitSerializer,
+    VariantAttributeSerializer,
+    VariantTypeSerializer,
 )
 from apps.inventory.models import (
-	Barcode, Brand, Category, Form, ItemInventoryLot, ItemLot,
-	ItemPricingDepartment, Manufacturer, ManufacturerBrand, PackSize,
-	Product, ProductVariant, ReorderRule, StockAlert, StockMove,
-	UnitOfMeasure, Warehouse, WarehouseLocation,
+    Barcode,
+    Category,
+    Item,
+    ItemInventoryLot,
+    ItemInventoryLotVariant,
+    ItemLot,
+    Manufacturer,
+    ManufacturerBrand,
+    ReorderRule,
+    StockAlert,
+    StockLedgerEntry,
+    StockLotCostValuation,
+    VariantAttribute,
+    VariantType,
+    item_pricing_department,
+    itemInvJournalEntry,
+    itemvariant,
+    itemvariantprices,
+    selling_rules,
+    unit,
+    unitofmeasure,
 )
 
+UnitViewSet = build_model_viewset(unit, UnitSerializer, search_fields=("name", "abr"), filterset_fields=("company", "is_active"), soft_delete=True)
+UnitOfMeasureViewSet = build_model_viewset(unitofmeasure, UnitOfMeasureSerializer, filterset_fields=("company", "is_active"), soft_delete=True)
 CategoryViewSet = build_model_viewset(Category, CategorySerializer, search_fields=("name", "slug"), filterset_fields=("company", "is_active"), soft_delete=True)
 ManufacturerViewSet = build_model_viewset(Manufacturer, ManufacturerSerializer, search_fields=("name",), filterset_fields=("company", "is_active"), soft_delete=True)
 ManufacturerBrandViewSet = build_model_viewset(ManufacturerBrand, ManufacturerBrandSerializer, search_fields=("name",), filterset_fields=("manufacturer", "is_active"), soft_delete=True)
-BrandViewSet = build_model_viewset(Brand, BrandSerializer, search_fields=("name",), filterset_fields=("company", "is_active"), soft_delete=True)
-UnitOfMeasureViewSet = build_model_viewset(UnitOfMeasure, UnitOfMeasureSerializer, search_fields=("name", "abbreviation"), filterset_fields=("company", "is_active"), soft_delete=True)
-FormViewSet = build_model_viewset(Form, FormSerializer, search_fields=("name",), filterset_fields=("company", "is_active"), soft_delete=True)
-PackSizeViewSet = build_model_viewset(PackSize, PackSizeSerializer, search_fields=("name",), filterset_fields=("company", "uom", "is_active"), soft_delete=True)
-ProductViewSet = build_model_viewset(
-	Product, ProductSerializer,
-	search_fields=("name", "sku"),
-	filterset_fields=("company", "category", "brand", "manufacturer", "form", "pack_size", "tax", "is_active", "is_sellable", "is_purchasable"),
-	prefetch_related_fields=("variants", "barcodes"),
-	soft_delete=True,
+VariantTypeViewSet = build_model_viewset(VariantType, VariantTypeSerializer, search_fields=("name",), filterset_fields=("company", "is_active"), soft_delete=True)
+VariantAttributeViewSet = build_model_viewset(VariantAttribute, VariantAttributeSerializer, search_fields=("name",), filterset_fields=("variant_type", "company", "is_active"), soft_delete=True)
+SellingRulesViewSet = build_model_viewset(selling_rules, SellingRulesSerializer, search_fields=("name",), filterset_fields=("department", "is_active"), soft_delete=True)
+ItemViewSet = build_model_viewset(
+    Item,
+    ItemSerializer,
+    search_fields=("name", "sku", "brandname"),
+    filterset_fields=("company", "category", "manufacturer", "tax", "is_active", "is_sellable", "is_purchasable", "is_serviceitem"),
+    prefetch_related_fields=("variants",),
+    soft_delete=True,
 )
-BarcodeViewSet = build_model_viewset(Barcode, BarcodeSerializer, search_fields=("value",), filterset_fields=("product", "barcode_type"))
-ProductVariantViewSet = build_model_viewset(ProductVariant, ProductVariantSerializer, search_fields=("code",), filterset_fields=("product", "company", "is_active"), soft_delete=True)
-ItemPricingDepartmentViewSet = build_model_viewset(ItemPricingDepartment, ItemPricingDepartmentSerializer, filterset_fields=("product", "variant", "branch", "department", "company", "is_active"), soft_delete=True)
-WarehouseViewSet = build_model_viewset(Warehouse, WarehouseSerializer, search_fields=("name", "code"), filterset_fields=("company", "branch", "is_active"), soft_delete=True)
-WarehouseLocationViewSet = build_model_viewset(WarehouseLocation, WarehouseLocationSerializer, search_fields=("code", "name"), filterset_fields=("warehouse", "is_active"), soft_delete=True)
-ItemLotViewSet = build_model_viewset(ItemLot, ItemLotSerializer, search_fields=("lot_number",), filterset_fields=("product", "variant", "expiry_date", "is_active"), soft_delete=True)
-ItemInventoryLotViewSet = build_model_viewset(ItemInventoryLot, ItemInventoryLotSerializer, filterset_fields=("lot", "warehouse", "location", "is_active"), soft_delete=True)
-StockMoveViewSet = build_model_viewset(StockMove, StockMoveSerializer, filterset_fields=("product", "warehouse", "move_type"), ordering_fields=("created_at",))
-ReorderRuleViewSet = build_model_viewset(ReorderRule, ReorderRuleSerializer, filterset_fields=("product", "warehouse", "is_active"), soft_delete=True)
-StockAlertViewSet = build_model_viewset(StockAlert, StockAlertSerializer, filterset_fields=("product", "warehouse", "alert_type", "is_active"), soft_delete=True)
+BarcodeViewSet = build_model_viewset(Barcode, BarcodeSerializer, search_fields=("value",), filterset_fields=("item", "barcode_type"))
+ItemvariantViewSet = build_model_viewset(itemvariant, ItemvariantSerializer, search_fields=("name",), filterset_fields=("item", "company", "is_active"), soft_delete=True)
+ItemPricingDepartmentViewSet = build_model_viewset(item_pricing_department, ItemPricingDepartmentSerializer, filterset_fields=("item", "sale_department", "company", "is_active"), soft_delete=True)
+ItemvariantpricesViewSet = build_model_viewset(itemvariantprices, ItemvariantpricesSerializer, filterset_fields=("variant_item", "itempricingdepartment", "is_active"), soft_delete=True)
+ItemLotViewSet = build_model_viewset(ItemLot, ItemLotSerializer, search_fields=("lot_number",), filterset_fields=("item", "variant", "is_active"), soft_delete=True)
+StockLotCostValuationViewSet = build_model_viewset(StockLotCostValuation, StockLotCostValuationSerializer, filterset_fields=("itemlot", "cost_department"))
+ItemInventoryLotViewSet = build_model_viewset(ItemInventoryLot, ItemInventoryLotSerializer, filterset_fields=("itemlot", "location", "inventory_state", "is_active"), soft_delete=True)
+ItemInventoryLotVariantViewSet = build_model_viewset(ItemInventoryLotVariant, ItemInventoryLotVariantSerializer, filterset_fields=("lot", "variant"))
+StockLedgerEntryViewSet = build_model_viewset(StockLedgerEntry, StockLedgerEntrySerializer, filterset_fields=("branch", "inventorytransacttype"), ordering_fields=("created_at",))
+ItemInvJournalEntryViewSet = build_model_viewset(itemInvJournalEntry, ItemInvJournalEntrySerializer, filterset_fields=("itemlot", "location", "inventory_state"), ordering_fields=("created_at",))
+ReorderRuleViewSet = build_model_viewset(ReorderRule, ReorderRuleSerializer, filterset_fields=("item", "branch", "is_active"), soft_delete=True)
+StockAlertViewSet = build_model_viewset(StockAlert, StockAlertSerializer, filterset_fields=("item", "branch", "alert_type", "is_active"), soft_delete=True)

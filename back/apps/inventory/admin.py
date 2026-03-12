@@ -2,47 +2,53 @@ from django.contrib import admin
 
 from apps.inventory.models import (
     Barcode,
-    Brand,
     Category,
-    Form,
+    Item,
     ItemInventoryLot,
+    ItemInventoryLotVariant,
     ItemLot,
-    ItemPricingDepartment,
     Manufacturer,
     ManufacturerBrand,
-    PackSize,
-    Product,
-    ProductVariant,
     ReorderRule,
     StockAlert,
-    StockMove,
-    UnitOfMeasure,
-    Warehouse,
-    WarehouseLocation,
+    StockLedgerEntry,
+    StockLotCostValuation,
+    VariantAttribute,
+    VariantType,
+    item_pricing_department,
+    itemInvJournalEntry,
+    itemvariant,
+    itemvariantprices,
+    selling_rules,
+    unit,
+    unitofmeasure,
 )
 
 
-@admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
-    list_display = ("name", "sku", "company", "sale_price", "is_active")
-    list_filter = ("company", "is_active", "is_sellable", "is_purchasable")
-    search_fields = ("name", "sku")
+@admin.register(Item)
+class ItemAdmin(admin.ModelAdmin):
+    list_display = ("name", "sku", "company", "is_sellable", "is_purchasable", "is_active")
+    list_filter = ("company", "is_active", "is_sellable", "is_purchasable", "is_serviceitem")
+    search_fields = ("name", "sku", "brandname")
 
 
+admin.site.register(unit)
+admin.site.register(unitofmeasure)
 admin.site.register(Category)
 admin.site.register(Manufacturer)
 admin.site.register(ManufacturerBrand)
-admin.site.register(Brand)
-admin.site.register(UnitOfMeasure)
-admin.site.register(Form)
-admin.site.register(PackSize)
+admin.site.register(VariantType)
+admin.site.register(VariantAttribute)
+admin.site.register(selling_rules)
 admin.site.register(Barcode)
-admin.site.register(ProductVariant)
-admin.site.register(ItemPricingDepartment)
-admin.site.register(Warehouse)
-admin.site.register(WarehouseLocation)
+admin.site.register(itemvariant)
+admin.site.register(item_pricing_department)
+admin.site.register(itemvariantprices)
 admin.site.register(ItemLot)
+admin.site.register(StockLotCostValuation)
 admin.site.register(ItemInventoryLot)
-admin.site.register(StockMove)
+admin.site.register(ItemInventoryLotVariant)
+admin.site.register(StockLedgerEntry)
+admin.site.register(itemInvJournalEntry)
 admin.site.register(ReorderRule)
 admin.site.register(StockAlert)

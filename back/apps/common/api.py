@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.common.pagination import StandardResultsPagination
+from apps.common.tenancy import assign_company_and_save, scope_queryset
 
 
 class BaseModelSerializer(serializers.ModelSerializer):
@@ -231,12 +232,19 @@ def build_model_viewset(
     select_related_fields=None,
     prefetch_related_fields=None,
     destroy_handler=None,
+    tenant_field_name="company",
+    tenant_scoped=None,
+    include_global_records=False,
+    auto_assign_company=True,
     soft_delete=False,
     soft_delete_field="is_active",
     archive_field="is_archived",
     extra_routes=None,
     method_overrides=None,
 ):
+    if tenant_scoped is None:
+        tenant_scoped = any(field.name == tenant_field_name for field in model_class._meta.fields)
+
     class AutoViewSet(ERPModelViewSet):
         queryset = model_class.objects.all()
 
@@ -255,7 +263,25 @@ def build_model_viewset(
             if queryset_handler is not None:
                 queryset = queryset_handler(self, queryset)
 
+            if tenant_scoped:
+                queryset = scope_queryset(
+                    queryset,
+                    request=self.request,
+                    field_name=tenant_field_name,
+                    include_global=include_global_records,
+                )
+
             return queryset
+
+        def perform_create(self, serializer):
+            instance = serializer.save()
+            if tenant_scoped and auto_assign_company:
+                assign_company_and_save(
+                    instance,
+                    request=self.request,
+                    field_name=tenant_field_name,
+                )
+            return instance
 
         def destroy(self, request, *args, **kwargs):
             if destroy_handler is not None:

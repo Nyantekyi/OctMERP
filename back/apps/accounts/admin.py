@@ -9,7 +9,6 @@ from apps.accounts.models import (
     BudgetType,
     Charts_of_account,
     ExpenseReport,
-    ExpenseType,
     Tax,
     Transaction,
     TransactionDoc,
@@ -28,7 +27,6 @@ admin.site.register(Tax)
 admin.site.register(BudgetType)
 admin.site.register(BudgetRequest)
 admin.site.register(BudgetAllocation)
-admin.site.register(ExpenseType)
 admin.site.register(ExpenseReport)
 admin.site.register(TransactionRequestType)
 admin.site.register(TransactionRequest)
