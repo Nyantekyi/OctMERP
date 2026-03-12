@@ -70,6 +70,14 @@ class Company(TenantMixin):
         PaymentClass, on_delete=models.PROTECT, null=True, blank=True, related_name="companies"
     )
     default_currency = CurrencyField(default="GHS")
+    timezone = models.CharField(_("Timezone"), max_length=63, default="UTC")
+    tradecountry = models.ForeignKey(
+        "contact.Country",
+        verbose_name=_("Country of Trade"),
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="companies",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

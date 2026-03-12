@@ -22,6 +22,10 @@ class Department(TenantAwareModel):
     ]
 
     name = models.CharField(_("Name"), max_length=50)
+    code = models.CharField(
+        _("Department Code"), max_length=10, unique=True, blank=True,
+        help_text=_("Short unique identifier for this department (e.g. FIN, OPS, MFG).")
+    )
     departmenttype = models.CharField(_("Type"), max_length=50, choices=DEPARTMENT_TYPE_CHOICES)
     description = models.TextField(blank=True, null=True)
     staff = models.ForeignKey(
@@ -67,6 +71,10 @@ class Department(TenantAwareModel):
 class Branch(TenantAwareModel):
     department = models.ForeignKey(Department, on_delete=models.PROTECT, related_name="branches")
     name = models.CharField(_("Branch Name"), max_length=50)
+    code = models.CharField(
+        _("Branch Code"), max_length=10, unique=True, blank=True,
+        help_text=_("Short unique identifier for this branch (e.g. HQ, KSI, ACC).")
+    )
     staff = models.ForeignKey(
         "party.CustomUser", on_delete=models.PROTECT,
         related_name="managed_branches", verbose_name=_("Branch Manager")

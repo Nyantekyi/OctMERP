@@ -3,6 +3,10 @@
         "/^source \\.venv/bin/activate && python manage\\.py check 2>&1 \\| head -60$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^cd /home/nyantekyi/Desktop/ERP && python3 -c \"\nimport django, os\nos\\.environ\\.setdefault\\('DJANGO_SETTINGS_MODULE', 'config\\.settings\\.development'\\)\ndjango\\.setup\\(\\)\nprint\\('OK'\\)\n\" 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

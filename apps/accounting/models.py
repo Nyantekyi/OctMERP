@@ -58,13 +58,15 @@ class ChartsOfAccount(TenantAwareModel):
         ("Debit", _("Debit")),
         ("Credit", _("Credit")),
     )
-    # Series ranges: Assets 10M, Liabilities 20M, Capital 30M, Revenue 40M, Expenses 50M
+    # Series ranges follow the DEALER mnemonic:
+    # Dividends/Expenses (Debit-normal) first, then Credit-normal accounts.
+    # Assets 10M, Expenses 20M, Liabilities 30M, Revenue 40M, Capital 50M
     SERIES_STARTS = {
         "Assets": 10100000,
-        "Liabilities": 20100000,
-        "Capital/Equity": 30100000,
+        "Expenses": 20100000,
+        "Liabilities": 30100000,
         "Revenues/Income": 40100000,
-        "Expenses": 50100000,
+        "Capital/Equity": 50100000,
     }
     DEBIT_TYPES = {"Assets", "Expenses"}
     CREDIT_TYPES = {"Liabilities", "Revenues/Income", "Capital/Equity"}
@@ -157,15 +159,15 @@ class Account(TenantAwareModel):
 
     @property
     def running_balance(self):
-        """Compute balance from posted transactions."""
+        """Compute balance from posted transactions (sums the amount_default sub-field)."""
         debit = (
             Transaction.objects.filter(account=self, transaction_type="Debit")
-            .aggregate(t=Sum("amount_default_currency"))
+            .aggregate(t=Sum("amount_default"))
             .get("t") or Decimal("0")
         )
         credit = (
             Transaction.objects.filter(account=self, transaction_type="Credit")
-            .aggregate(t=Sum("amount_default_currency"))
+            .aggregate(t=Sum("amount_default"))
             .get("t") or Decimal("0")
         )
         if self.account_type.account_balance_type == "Debit":
@@ -255,6 +257,35 @@ class Transaction(TenantAwareModel):
 
     def get_absolute_url(self):
         return reverse("transaction_detail", kwargs={"pk": self.pk})
+
+    def verify_debit_credit(self):
+        """Raise an exception if total debits ≠ total credits across all Transactions."""
+        debits = (
+            Transaction.objects.filter(transaction_type="Debit")
+            .aggregate(Sum("amount_default"))["amount_default__sum"] or Decimal("0")
+        )
+        credits = (
+            Transaction.objects.filter(transaction_type="Credit")
+            .aggregate(Sum("amount_default"))["amount_default__sum"] or Decimal("0")
+        )
+        if debits == credits:
+            return True
+        raise ValidationError(
+            _("Accounting equation violated: total debits %(d)s ≠ total credits %(c)s.")
+            % {"d": debits, "c": credits}
+        )
+
+    def check_debit_credit(self):
+        """Return 0 if balanced, otherwise the net difference (debits − credits)."""
+        debits = (
+            Transaction.objects.filter(transaction_type="Debit")
+            .aggregate(Sum("amount_default"))["amount_default__sum"] or Decimal("0")
+        )
+        credits = (
+            Transaction.objects.filter(transaction_type="Credit")
+            .aggregate(Sum("amount_default"))["amount_default__sum"] or Decimal("0")
+        )
+        return debits - credits
 
 
 
@@ -912,6 +943,87 @@ class BillLine(TenantAwareModel):
 
     def __str__(self):
         return f"{self.description} x {self.quantity} = {self.line_total}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Journal Entry (manual / adjusting entries)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class JournalEntry(TenantAwareModel):
+    """
+    Header record for a manual journal entry (e.g. depreciation, disposal).
+    A JournalEntry must balance: sum of debits == sum of credits across its lines.
+    """
+    date = models.DateField(_("Entry Date"), default=timezone.now)
+    reference = models.CharField(_("Reference"), max_length=100, unique=True, blank=True)
+    description = models.CharField(_("Description"), max_length=255)
+    narration = models.TextField(_("Narration"), blank=True)
+    posted = models.BooleanField(_("Posted?"), default=False)
+    posted_by = models.ForeignKey(
+        "party.StaffProfile", verbose_name=_("Posted By"),
+        on_delete=models.SET_NULL, null=True, blank=True, related_name="journal_entries"
+    )
+    transaction_doc = models.OneToOneField(
+        TransactionDoc, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="journal_entry"
+    )
+
+    class Meta:
+        verbose_name = _("Journal Entry")
+        verbose_name_plural = _("Journal Entries")
+        ordering = ["-date"]
+
+    def __str__(self):
+        return f"JE-{self.reference or self.id} ({self.date})"
+
+    def get_absolute_url(self):
+        return reverse("journalentry_detail", kwargs={"pk": self.pk})
+
+    def clean(self):
+        total_debit = sum(
+            (line.debit.amount for line in self.lines.all()), Decimal("0")
+        )
+        total_credit = sum(
+            (line.credit.amount for line in self.lines.all()), Decimal("0")
+        )
+        if total_debit != total_credit:
+            raise ValidationError(
+                _("Journal entry does not balance: debits %(d)s ≠ credits %(c)s.")
+                % {"d": total_debit, "c": total_credit}
+            )
+
+
+class JournalEntryLine(TenantAwareModel):
+    """Single debit or credit line within a JournalEntry."""
+    journal = models.ForeignKey(
+        JournalEntry, on_delete=models.CASCADE, related_name="lines", verbose_name=_("Journal Entry")
+    )
+    account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, related_name="journal_lines", verbose_name=_("Account")
+    )
+    debit = MoneyField(
+        _("Debit"), max_digits=20, decimal_places=2,
+        default=0, default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
+    )
+    credit = MoneyField(
+        _("Credit"), max_digits=20, decimal_places=2,
+        default=0, default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
+    )
+    description = models.CharField(_("Description"), max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = _("Journal Entry Line")
+        verbose_name_plural = _("Journal Entry Lines")
+        ordering = ["journal", "account"]
+
+    def __str__(self):
+        return f"{self.journal} | {self.account} | Dr {self.debit} / Cr {self.credit}"
+
+    def clean(self):
+        if self.debit.amount > 0 and self.credit.amount > 0:
+            raise ValidationError(_("A journal line cannot have both a debit and a credit amount."))
+        if self.debit.amount < 0 or self.credit.amount < 0:
+            raise ValidationError(_("Debit and credit amounts must be non-negative."))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
