@@ -4,24 +4,31 @@ from decouple import Csv, config
 from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+USE_DJANGO_TENANTS = config("DJANGO_USE_TENANTS", default=False, cast=bool)
 
 SECRET_KEY = config("DJANGO_SECRET_KEY", default="django-insecure-dev-key")
 DEBUG = config("DJANGO_DEBUG", default=True, cast=bool)
 ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", default="127.0.0.1,localhost", cast=Csv())
 
-INSTALLED_APPS = [
+CORE_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+]
+
+THIRD_PARTY_APPS = [
     "corsheaders",
     "django_filters",
     "rest_framework",
     "rest_framework.authtoken",
     "drf_spectacular",
     "djmoney",
+]
+
+LOCAL_APPS = [
     "apps.common",
     "apps.contact",
     "apps.company",
@@ -30,10 +37,50 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.hrm",
     "apps.crm",
+    "apps.inventory",
+    "apps.sales",
 ]
+
+if USE_DJANGO_TENANTS:
+    SHARED_APPS = [
+        "django_tenants",
+        *CORE_APPS,
+        "corsheaders",
+        "rest_framework",
+        "drf_spectacular",
+        "apps.common",
+        "apps.contact",
+        "apps.company",   # contains the Tenant model
+    ]
+    TENANT_APPS = [
+        "django.contrib.contenttypes",
+        "django.contrib.auth",
+        "django.contrib.sessions",
+        "django.contrib.messages",
+        "django.contrib.staticfiles",
+        "django_filters",
+        "rest_framework",
+        "rest_framework.authtoken",
+        "drf_spectacular",
+        "djmoney",
+        "apps.common",
+        "apps.contact",
+        "apps.company",
+        "apps.party",
+        "apps.department",
+        "apps.accounts",
+        "apps.hrm",
+        "apps.crm",
+        "apps.inventory",
+        "apps.sales",
+    ]
+    INSTALLED_APPS = SHARED_APPS + [app for app in TENANT_APPS if app not in SHARED_APPS]
+else:
+    INSTALLED_APPS = CORE_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
+    *( ["django_tenants.middleware.main.TenantMainMiddleware"] if USE_DJANGO_TENANTS else [] ),
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -63,12 +110,31 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+if USE_DJANGO_TENANTS:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django_tenants.postgresql_backend",
+            "NAME": config("DB_NAME", default="erp"),
+            "USER": config("DB_USER", default="postgres"),
+            "PASSWORD": config("DB_PASSWORD", default="postgres"),
+            "HOST": config("DB_HOST", default="127.0.0.1"),
+            "PORT": config("DB_PORT", default="5432"),
+        }
     }
-}
+    DATABASE_ROUTERS = ("django_tenants.routers.TenantSyncRouter",)
+    TENANT_MODEL = "company.Company"
+    TENANT_DOMAIN_MODEL = "company.Domain"
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": config("DB_NAME", default="erp"),
+            "USER": config("DB_USER", default="postgres"),
+            "PASSWORD": config("DB_PASSWORD", default="postgres"),
+            "HOST": config("DB_HOST", default="127.0.0.1"),
+            "PORT": config("DB_PORT", default="5432"),
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

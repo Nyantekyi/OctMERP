@@ -1,11 +1,8 @@
 import type { H3Event } from 'h3'
-import { createError, deleteCookie, getCookie, getMethod, getQuery, readBody, setCookie } from 'h3'
+import { createError, deleteCookie, getCookie, getQuery, readBody, setCookie } from 'h3'
 
 const accessCookieName = 'erp_access_token'
 const refreshCookieName = 'erp_refresh_token'
-const runtimeEnv = (globalThis as typeof globalThis & {
-  process?: { env?: Record<string, string | undefined> }
-}).process?.env
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
@@ -17,7 +14,7 @@ interface BackendRequestOptions {
 }
 
 function secureCookie() {
-  return runtimeEnv?.NODE_ENV === 'production'
+  return (import.meta as unknown as { env: { PROD: boolean } }).env.PROD
 }
 
 function cookieOptions(maxAge: number) {
@@ -141,7 +138,7 @@ export async function readRequestPayload(event: H3Event): Promise<{
   query: Record<string, unknown>
   body: unknown
 }> {
-  const method = getMethod(event).toUpperCase() as HttpMethod
+  const method = event.method.toUpperCase() as HttpMethod
   const query = getQuery(event)
   const body = ['POST', 'PUT', 'PATCH'].includes(method)
     ? await readBody(event)

@@ -1,9 +1,8 @@
-import { createError, getRouterParam } from 'h3'
+import { createError } from 'h3'
 import { callDjango, readRequestPayload } from '../../utils/backend'
 
 export default defineEventHandler(async (event): Promise<unknown> => {
-  const routePath = getRouterParam(event, 'path')
-  const path = Array.isArray(routePath) ? routePath.join('/') : routePath
+  const path = getRouterParam(event, 'path')
 
   if (!path) {
     throw createError({

@@ -15,6 +15,7 @@ class BaseModelSerializer(serializers.ModelSerializer):
 def build_model_serializer(
     model_class,
     read_only_fields=None,
+    nested_serializers=None,
     create_handler=None,
     update_handler=None,
     validate_handler=None,
@@ -26,20 +27,135 @@ def build_model_serializer(
     if read_only_fields:
         meta_read_only = meta_read_only + tuple(read_only_fields)
 
+    normalized_nested = {}
+    if nested_serializers:
+        for field_name, config in nested_serializers.items():
+            if isinstance(config, dict):
+                serializer_cls = config.get("serializer")
+                if serializer_cls is None:
+                    raise ValueError(f"nested_serializers['{field_name}'] must include a 'serializer' key")
+                normalized_nested[field_name] = config
+            else:
+                normalized_nested[field_name] = {"serializer": config}
+
     class AutoSerializer(BaseModelSerializer):
         class Meta(BaseModelSerializer.Meta):
             model = model_class
             read_only_fields = meta_read_only
 
+        def _update_object_with_setattr(self, instance, attrs):
+            for attr, value in attrs.items():
+                setattr(instance, attr, value)
+            instance.save()
+            return instance
+
+        def _save_nested_item(self, field_name, manager_or_instance, item_data):
+            if isinstance(manager_or_instance, models.Model):
+                return self._update_object_with_setattr(manager_or_instance, item_data)
+
+            related_model = manager_or_instance.model
+            item_id = item_data.get("id") or item_data.get("pk")
+            if item_id:
+                existing = related_model.objects.filter(pk=item_id).first()
+                if existing:
+                    payload = dict(item_data)
+                    payload.pop("id", None)
+                    payload.pop("pk", None)
+                    return self._update_object_with_setattr(existing, payload)
+
+            return related_model.objects.create(**item_data)
+
+        def _apply_nested_writes(self, instance, nested_payload, is_update=False):
+            if not nested_payload:
+                return
+
+            for field_name, config in nested_payload.items():
+                source_name = config["source"]
+                many = config["many"]
+                writable_on_create = config["write_on_create"]
+                writable_on_update = config["write_on_update"]
+                nested_data = config["data"]
+
+                if nested_data is serializers.empty:
+                    continue
+
+                if not is_update and not writable_on_create:
+                    continue
+                if is_update and not writable_on_update:
+                    continue
+
+                target = getattr(instance, source_name, None)
+
+                if many:
+                    if nested_data is None:
+                        if hasattr(target, "clear"):
+                            target.clear()
+                        continue
+
+                    if not hasattr(target, "set"):
+                        continue
+
+                    saved_objects = []
+                    for row in nested_data:
+                        saved_objects.append(self._save_nested_item(field_name, target, row))
+                    target.set(saved_objects)
+                    continue
+
+                if nested_data is None:
+                    setattr(instance, source_name, None)
+                    instance.save(update_fields=[source_name])
+                    continue
+
+                if target is None:
+                    relation_field = instance._meta.get_field(source_name)
+                    related_model = relation_field.remote_field.model
+                    target = related_model.objects.create(**nested_data)
+                    setattr(instance, source_name, target)
+                    instance.save(update_fields=[source_name])
+                else:
+                    self._update_object_with_setattr(target, nested_data)
+
         def create(self, validated_data):
+            nested_payload = {}
+            if normalized_nested:
+                for field_name, config in normalized_nested.items():
+                    source_name = config.get("source", field_name)
+                    nested_payload[field_name] = {
+                        "source": source_name,
+                        "many": bool(config.get("many", False)),
+                        "write_on_create": bool(config.get("write_on_create", True)),
+                        "write_on_update": bool(config.get("write_on_update", True)),
+                        "data": validated_data.pop(source_name, serializers.empty),
+                    }
+
             if create_handler is not None:
-                return create_handler(self, validated_data)
-            return super().create(validated_data)
+                instance = create_handler(self, validated_data)
+            else:
+                instance = super().create(validated_data)
+
+            self._apply_nested_writes(instance, nested_payload, is_update=False)
+            return instance
 
         def update(self, instance, validated_data):
+            nested_payload = {}
+            if normalized_nested:
+                for field_name, config in normalized_nested.items():
+                    source_name = config.get("source", field_name)
+                    nested_payload[field_name] = {
+                        "source": source_name,
+                        "many": bool(config.get("many", False)),
+                        "write_on_create": bool(config.get("write_on_create", True)),
+                        "write_on_update": bool(config.get("write_on_update", True)),
+                        "data": validated_data.pop(source_name, serializers.empty),
+                    }
+
             if update_handler is not None:
-                return update_handler(self, instance, validated_data)
-            return super().update(instance, validated_data)
+                updated_instance = update_handler(self, instance, validated_data)
+            else:
+                updated_instance = super().update(instance, validated_data)
+
+            self._apply_nested_writes(updated_instance, nested_payload, is_update=True)
+            return updated_instance
 
         def validate(self, attrs):
             attrs = super().validate(attrs)
@@ -60,6 +176,19 @@ def build_model_serializer(
 
     AutoSerializer.__name__ = f"{model_class.__name__}Serializer"
 
+    if normalized_nested:
+        for field_name, config in normalized_nested.items():
+            serializer_cls = config["serializer"]
+            source_name = config.get("source", field_name)
+            nested_field = serializer_cls(
+                many=bool(config.get("many", False)),
+                required=bool(config.get("required", False)),
+                allow_null=bool(config.get("allow_null", True)),
+                read_only=bool(config.get("read_only", False)),
+                source=source_name,
+            )
+            AutoSerializer._declared_fields[field_name] = nested_field
+
     if method_overrides:
         for method_name, method in method_overrides.items():
             setattr(AutoSerializer, method_name, method)
@@ -70,44 +199,6 @@ def build_model_serializer(
 class ERPModelViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsPagination
     ordering = ("-created_at",)
-
-    def build_response_envelope(self, payload, success=True, errors=None, meta=None):
-        return {
-            "success": success,
-            "data": payload,
-            "meta": meta,
-            "errors": errors,
-        }
-
-    def as_enveloped_response(self, response):
-        if not isinstance(response, Response):
-            return response
-
-        data = response.data
-        if isinstance(data, dict) and {"success", "data", "errors"}.issubset(data.keys()):
-            return response
-
-        success = 200 <= response.status_code < 400
-        meta = None
-        payload = data if success else None
-        errors = None if success else data
-
-        if success and isinstance(data, dict) and "results" in data and "count" in data:
-            payload = data.get("results", [])
-            meta = {
-                "count": data.get("count"),
-                "total_pages": data.get("total_pages"),
-                "next": data.get("next"),
-                "previous": data.get("previous"),
-            }
-
-        response.data = self.build_response_envelope(
-            payload=payload,
-            success=success,
-            errors=errors,
-            meta=meta,
-        )
-        return response
 
 
 def build_action_route(
@@ -136,24 +227,10 @@ def build_model_viewset(
     filterset_fields=(),
     ordering_fields=(),
     permission_classes=None,
-    serializer_context_handler=None,
-    serializer_class_handler=None,
-    permission_handler=None,
     queryset_handler=None,
     select_related_fields=None,
     prefetch_related_fields=None,
-    retrieve_object_handler=None,
-    list_handler=None,
-    retrieve_handler=None,
-    create_handler=None,
-    update_handler=None,
-    partial_update_handler=None,
     destroy_handler=None,
-    perform_create_handler=None,
-    perform_update_handler=None,
-    perform_destroy_handler=None,
-    use_response_envelope=False,
-    response_envelope_handler=None,
     soft_delete=False,
     soft_delete_field="is_active",
     archive_field="is_archived",
@@ -180,72 +257,9 @@ def build_model_viewset(
 
             return queryset
 
-        def get_object(self):
-            instance = super().get_object()
-            if retrieve_object_handler is not None:
-                return retrieve_object_handler(self, instance)
-            return instance
-
-        def get_serializer_context(self):
-            context = super().get_serializer_context()
-            if serializer_context_handler is not None:
-                return serializer_context_handler(self, context)
-            return context
-
-        def get_serializer_class(self):
-            if serializer_class_handler is not None:
-                return serializer_class_handler(self)
-            return super().get_serializer_class()
-
-        def get_permissions(self):
-            if permission_handler is not None:
-                return permission_handler(self)
-            return super().get_permissions()
-
-        def perform_create(self, serializer):
-            if perform_create_handler is not None:
-                return perform_create_handler(self, serializer)
-            return super().perform_create(serializer)
-
-        def create(self, request, *args, **kwargs):
-            if create_handler is not None:
-                response = create_handler(self, request, *args, **kwargs)
-            else:
-                response = super().create(request, *args, **kwargs)
-            return self._maybe_envelope_response(response)
-
-        def list(self, request, *args, **kwargs):
-            if list_handler is not None:
-                response = list_handler(self, request, *args, **kwargs)
-            else:
-                response = super().list(request, *args, **kwargs)
-            return self._maybe_envelope_response(response)
-
-        def retrieve(self, request, *args, **kwargs):
-            if retrieve_handler is not None:
-                response = retrieve_handler(self, request, *args, **kwargs)
-            else:
-                response = super().retrieve(request, *args, **kwargs)
-            return self._maybe_envelope_response(response)
-
-        def update(self, request, *args, **kwargs):
-            if update_handler is not None:
-                response = update_handler(self, request, *args, **kwargs)
-            else:
-                response = super().update(request, *args, **kwargs)
-            return self._maybe_envelope_response(response)
-
-        def partial_update(self, request, *args, **kwargs):
-            if partial_update_handler is not None:
-                response = partial_update_handler(self, request, *args, **kwargs)
-            else:
-                response = super().partial_update(request, *args, **kwargs)
-            return self._maybe_envelope_response(response)
-
         def destroy(self, request, *args, **kwargs):
             if destroy_handler is not None:
-                response = destroy_handler(self, request, *args, **kwargs)
-                return self._maybe_envelope_response(response)
+                return destroy_handler(self, request, *args, **kwargs)
 
             if soft_delete:
                 instance = self.get_object()
@@ -258,28 +272,9 @@ def build_model_viewset(
                         update_fields.append(archive_field)
 
                     instance.save(update_fields=update_fields)
-                    response = Response(status=204)
-                    return self._maybe_envelope_response(response)
+                    return Response(status=204)
 
-            response = super().destroy(request, *args, **kwargs)
-            return self._maybe_envelope_response(response)
-
-        def perform_update(self, serializer):
-            if perform_update_handler is not None:
-                return perform_update_handler(self, serializer)
-            return super().perform_update(serializer)
-
-        def perform_destroy(self, instance):
-            if perform_destroy_handler is not None:
-                return perform_destroy_handler(self, instance)
-            return super().perform_destroy(instance)
-
-        def _maybe_envelope_response(self, response):
-            if not use_response_envelope:
-                return response
-            if response_envelope_handler is not None:
-                return response_envelope_handler(self, response)
-            return self.as_enveloped_response(response)
+            return super().destroy(request, *args, **kwargs)
 
     AutoViewSet.__name__ = f"{model_class.__name__}ViewSet"
     AutoViewSet.serializer_class = serializer_class
