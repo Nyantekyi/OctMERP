@@ -100,7 +100,7 @@ class OrderDocument(TenantAwareModel):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     branch = models.ForeignKey("department.Branch", on_delete=models.PROTECT, related_name="order_documents")
     staff = models.ForeignKey(
-        "party.CustomUser", on_delete=models.PROTECT, related_name="created_order_documents"
+        "party.User", on_delete=models.PROTECT, related_name="created_order_documents"
     )
     vendor = models.ForeignKey(
         "party.SupplierProfile", on_delete=models.PROTECT,
@@ -236,15 +236,15 @@ class TransferInventoryDocument(TenantAwareModel):
     is_return = models.BooleanField(default=False)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     in_staff = models.ForeignKey(
-        "party.CustomUser", on_delete=models.PROTECT,
+        "party.User", on_delete=models.PROTECT,
         null=True, blank=True, related_name="transfer_receipts"
     )
     out_staff = models.ForeignKey(
-        "party.CustomUser", on_delete=models.PROTECT,
+        "party.User", on_delete=models.PROTECT,
         null=True, blank=True, related_name="transfer_dispatches"
     )
     delivery_staff = models.ForeignKey(
-        "party.CustomUser", on_delete=models.PROTECT,
+        "party.User", on_delete=models.PROTECT,
         null=True, blank=True, related_name="transfer_deliveries"
     )
     outcartoncount = models.PositiveIntegerField(_("Out Carton Count"), default=0)

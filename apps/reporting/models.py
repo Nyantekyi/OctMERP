@@ -45,7 +45,7 @@ class ReportDefinition(TenantAwareModel):
     config = models.JSONField(_("Report Config"), default=dict)
     is_public = models.BooleanField(_("Visible to all?"), default=False)
     owner = models.ForeignKey(
-        "party.CustomUser", on_delete=models.SET_NULL, null=True, blank=True,
+        "party.User", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="owned_reports"
     )
 
@@ -60,7 +60,7 @@ class Dashboard(TenantAwareModel):
     """User-configurable dashboard layout."""
     name = models.CharField(_("Dashboard Name"), max_length=100)
     owner = models.ForeignKey(
-        "party.CustomUser", on_delete=models.CASCADE, related_name="dashboards"
+        "party.User", on_delete=models.CASCADE, related_name="dashboards"
     )
     is_default = models.BooleanField(_("Default Dashboard"), default=False)
     layout = models.JSONField(_("Widget Layout"), default=list)
@@ -134,7 +134,7 @@ class KPISnapshot(TenantAwareModel):
 class ScheduledReport(TenantAwareModel):
     """Auto-generates and emails a report on a schedule."""
     report = models.ForeignKey(ReportDefinition, on_delete=models.CASCADE, related_name="schedules")
-    recipients = models.ManyToManyField("party.CustomUser", blank=True, related_name="scheduled_reports")
+    recipients = models.ManyToManyField("party.User", blank=True, related_name="scheduled_reports")
     cron_expression = models.CharField(max_length=50, default="0 7 * * 1")
     format_output = models.CharField(
         max_length=10, choices=[("pdf", "PDF"), ("csv", "CSV"), ("xlsx", "Excel")], default="pdf"

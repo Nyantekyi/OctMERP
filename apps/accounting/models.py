@@ -26,6 +26,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import int_list_validator
 from django.db import models
 from django.db.models import Avg, Max, Sum, Q
+from django.db.models.functions import Coalesce
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.shortcuts import get_object_or_404
@@ -132,7 +133,7 @@ class Account(TenantAwareModel):
         on_delete=models.DO_NOTHING, related_name="accounts"
     )
     acc_number = models.PositiveIntegerField(_("Account Number"), editable=False, unique=True)
-    name = models.CharField(_("Account Name"), max_length=255, blank=True)
+    currency = CurrencyField(default=DEFAULT_CURRENCY, choices=CURRENCY_CHOICES)
     content_type = models.ForeignKey(ContentType, on_delete=models.DO_NOTHING)
     object_id = models.UUIDField()
     account_object = GenericForeignKey("content_type", "object_id")
@@ -145,7 +146,7 @@ class Account(TenantAwareModel):
         ordering = ["acc_number"]
 
     def __str__(self):
-        return f"{self.acc_number} — {self.name or self.account_type.name}"
+        return f"{self.acc_number} — {self.account_type.name} ({self.currency})"
 
     def get_absolute_url(self):
         return reverse("account_detail", kwargs={"pk": self.pk})
@@ -159,15 +160,15 @@ class Account(TenantAwareModel):
 
     @property
     def running_balance(self):
-        """Compute balance from posted transactions (sums the amount_default sub-field)."""
+        """Compute balance using amount_default when present, else amount."""
         debit = (
             Transaction.objects.filter(account=self, transaction_type="Debit")
-            .aggregate(t=Sum("amount_default"))
+            .aggregate(t=Sum(Coalesce("amount_default", "amount")))
             .get("t") or Decimal("0")
         )
         credit = (
             Transaction.objects.filter(account=self, transaction_type="Credit")
-            .aggregate(t=Sum("amount_default"))
+            .aggregate(t=Sum(Coalesce("amount_default", "amount")))
             .get("t") or Decimal("0")
         )
         if self.account_type.account_balance_type == "Debit":
@@ -231,12 +232,13 @@ class Transaction(TenantAwareModel):
     )
     amount = MoneyField(
         _("Amount"), max_digits=20, decimal_places=2,
-        default=0, default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
+        default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
     )
     conversion_rate = models.DecimalField(_("Conversion Rate"), max_digits=10, decimal_places=6, default=1)
     amount_default = MoneyField(
         _("Amount (Default Currency)"), max_digits=20, decimal_places=2,
-        default=0, default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
+        null=True, blank=True,
+        default_currency=DEFAULT_CURRENCY, currency_choices=CURRENCY_CHOICES
     )
     description = models.CharField(_("Description"), max_length=255, blank=True)
 
@@ -251,8 +253,24 @@ class Transaction(TenantAwareModel):
     def save(self, *args, **kwargs):
         if not self.account_id:
             raise ValidationError(_("Account is required."))
+        if self.amount.currency != self.account.currency:
+            raise ValidationError(_("Transaction amount currency must match account currency."))
         self.coa = self.account.account_type
-        self.amount_default = self.amount / self.conversion_rate
+
+        # Only compute default-currency amount for mixed-currency docs.
+        doc_currencies = set(
+            self.notes.transactions.exclude(pk=self.pk)
+            .values_list("account__currency", flat=True)
+        )
+        doc_currencies.add(str(self.account.currency))
+        if len(doc_currencies) > 1:
+            if self.conversion_rate <= 0:
+                raise ValidationError(_("Conversion rate must be greater than zero for mixed-currency transactions."))
+            self.amount_default = self.amount / self.conversion_rate
+        else:
+            self.amount_default = None
+            self.conversion_rate = Decimal("1")
+
         super().save(*args, **kwargs)
 
     def get_absolute_url(self):
@@ -262,11 +280,11 @@ class Transaction(TenantAwareModel):
         """Raise an exception if total debits ≠ total credits across all Transactions."""
         debits = (
             Transaction.objects.filter(transaction_type="Debit")
-            .aggregate(Sum("amount_default"))["amount_default__sum"] or Decimal("0")
+            .aggregate(total=Sum(Coalesce("amount_default", "amount")))["total"] or Decimal("0")
         )
         credits = (
             Transaction.objects.filter(transaction_type="Credit")
-            .aggregate(Sum("amount_default"))["amount_default__sum"] or Decimal("0")
+            .aggregate(total=Sum(Coalesce("amount_default", "amount")))["total"] or Decimal("0")
         )
         if debits == credits:
             return True
@@ -279,11 +297,11 @@ class Transaction(TenantAwareModel):
         """Return 0 if balanced, otherwise the net difference (debits − credits)."""
         debits = (
             Transaction.objects.filter(transaction_type="Debit")
-            .aggregate(Sum("amount_default"))["amount_default__sum"] or Decimal("0")
+            .aggregate(total=Sum(Coalesce("amount_default", "amount")))["total"] or Decimal("0")
         )
         credits = (
             Transaction.objects.filter(transaction_type="Credit")
-            .aggregate(Sum("amount_default"))["amount_default__sum"] or Decimal("0")
+            .aggregate(total=Sum(Coalesce("amount_default", "amount")))["total"] or Decimal("0")
         )
         return debits - credits
 
@@ -294,14 +312,20 @@ class Transaction(TenantAwareModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Tax(TenantAwareModel):
-    TAX_TYPE_CHOICES = (("percent", _("Percentage")), ("amount", _("Fixed Amount")))
 
     name = models.CharField(_("Tax Name"), max_length=100, unique=True)
     description = models.TextField(blank=True, null=True)
     effective_date = models.DateField(_("Effective Date"))
     is_tax_recoverable = models.BooleanField(_("Recoverable Input Tax?"), default=False)
-    tax_type = models.CharField(_("Tax Type"), max_length=10, choices=TAX_TYPE_CHOICES, default="percent")
-    tax = models.DecimalField(_("Tax Rate / Amount"), max_digits=18, decimal_places=4, default=0)
+    rate = models.DecimalField(_("Tax Rate (%)"), max_digits=5, decimal_places=4, default=0) 
+    min_tax_amount = models.DecimalField(
+        _("Minimum Tax Amount"), max_digits=18, decimal_places=2, default=0,
+        help_text=_("Minimum tax to charge after percentage calculation (0 = no floor).")
+    )
+    max_tax_amount = models.DecimalField(
+        _("Maximum Tax Amount"), max_digits=18, decimal_places=2, default=0,
+        help_text=_("Maximum tax to charge after percentage calculation (0 = no cap).")
+    )
     min_taxable_amount = models.DecimalField(
         _("Min Taxable Amount"), max_digits=18, decimal_places=2, default=0,
         help_text=_("Only amounts above this threshold are taxable (0 = always applies).")
@@ -330,19 +354,24 @@ class Tax(TenantAwareModel):
         ordering = ["name"]
 
     def __str__(self):
-        return f"{self.name} ({self.tax}{'%' if self.tax_type == 'percent' else ''})"
+        return f"{self.name} ({self.rate}%)"
 
     def get_absolute_url(self):
         return reverse("tax_detail", kwargs={"pk": self.pk})
 
     def clean(self):
-        if self.tax_type == "percent" and not (0 <= self.tax <= 100):
+        if self.tax_type != "percent":
+            raise ValidationError(_("Tax type must be percentage."))
+        if not (0 <= self.tax <= 100):
             raise ValidationError(_("Percentage tax must be between 0 and 100."))
-        if self.tax_type == "amount" and self.tax < 0:
-            raise ValidationError(_("Fixed tax amount must be non-negative."))
         if (self.min_taxable_amount > 0 and self.max_taxable_amount > 0
                 and self.min_taxable_amount > self.max_taxable_amount):
             raise ValidationError(_("Min taxable amount must be ≤ max taxable amount."))
+        if self.min_tax_amount < 0 or self.max_tax_amount < 0:
+            raise ValidationError(_("Tax amount limits must be non-negative."))
+        if (self.min_tax_amount > 0 and self.max_tax_amount > 0
+                and self.min_tax_amount > self.max_tax_amount):
+            raise ValidationError(_("Minimum tax amount must be ≤ maximum tax amount."))
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -367,9 +396,14 @@ def calculate_tax_amount(amount: Money, tax_id) -> tuple:
     else:
         taxable = amount
 
-    if tax.tax_type == "percent":
-        return taxable * (tax.tax / Decimal("100")), tax
-    return Money(tax.tax, DEFAULT_CURRENCY), tax
+    tax_value = taxable * (tax.tax / Decimal("100"))
+
+    if tax.max_tax_amount > 0 and tax_value.amount > tax.max_tax_amount:
+        tax_value = Money(tax.max_tax_amount, DEFAULT_CURRENCY)
+    if tax.min_tax_amount > 0 and tax_value.amount < tax.min_tax_amount:
+        tax_value = Money(tax.min_tax_amount, DEFAULT_CURRENCY)
+
+    return tax_value, tax
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1175,7 +1209,9 @@ def _create_staff_accounts(ct, id_val, instance):
     ar_coa = ChartsOfAccount.objects.get(name="Accounts Receivables")
     ar_acc, _ = Account.objects.get_or_create(content_type=ct, object_id=id_val, account_type=ar_coa)
     from apps.party.models import StaffProfile
-    StaffProfile.objects.filter(pk=id_val).update(staff_account=staff_acc, credit_sale_account=ar_acc)
+    staff_profile = StaffProfile.objects.get(pk=id_val)
+    # AR account here is used for staff-loan receivables.
+    staff_profile.accounts.set([staff_acc, ar_acc])
 
 
 def _create_client_accounts(ct, id_val, instance):

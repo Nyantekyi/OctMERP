@@ -29,7 +29,7 @@ class Department(TenantAwareModel):
     departmenttype = models.CharField(_("Type"), max_length=50, choices=DEPARTMENT_TYPE_CHOICES)
     description = models.TextField(blank=True, null=True)
     staff = models.ForeignKey(
-        "party.CustomUser", on_delete=models.PROTECT,
+        "party.User", on_delete=models.PROTECT,
         related_name="managed_departments", verbose_name=_("Manager")
     )
     base_markup = models.DecimalField(_("Base Markup %"), max_digits=5, decimal_places=2, default=0)
@@ -76,7 +76,7 @@ class Branch(TenantAwareModel):
         help_text=_("Short unique identifier for this branch (e.g. HQ, KSI, ACC).")
     )
     staff = models.ForeignKey(
-        "party.CustomUser", on_delete=models.PROTECT,
+        "party.User", on_delete=models.PROTECT,
         related_name="managed_branches", verbose_name=_("Branch Manager")
     )
     address = models.ForeignKey(
@@ -120,7 +120,7 @@ class Shift(TenantAwareModel):
     end_time = models.TimeField(_("End Time"))
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name="shifts")
     staff = models.ForeignKey(
-        "party.CustomUser", on_delete=models.PROTECT, related_name="created_shifts"
+        "party.User", on_delete=models.PROTECT, related_name="created_shifts"
     )
     break_duration_minutes = models.PositiveIntegerField(_("Break Duration (min)"), default=0)
 
@@ -158,7 +158,7 @@ class Room(TenantAwareModel):
         max_digits=10, decimal_places=2, default=0, default_currency=DEFAULT_CURRENCY
     )
     staff = models.ForeignKey(
-        "party.CustomUser", on_delete=models.PROTECT, related_name="managed_rooms"
+        "party.User", on_delete=models.PROTECT, related_name="managed_rooms"
     )
     location = models.ForeignKey(
         "contact.Address", on_delete=models.PROTECT, null=True, blank=True, related_name="rooms"
@@ -170,7 +170,7 @@ class Room(TenantAwareModel):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="available")
     assigned_branch = models.ManyToManyField(Branch, blank=True, related_name="rooms")
     assigned_staff = models.ManyToManyField(
-        "party.CustomUser", blank=True, related_name="assigned_rooms"
+        "party.User", blank=True, related_name="assigned_rooms"
     )
 
     class Meta:

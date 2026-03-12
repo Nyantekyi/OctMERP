@@ -132,7 +132,7 @@ DATABASES = {
 DATABASE_ROUTERS = ["django_tenants.routers.TenantSyncRouter"]
 
 # ── Authentication ────────────────────────────────────────────────────────────
-AUTH_USER_MODEL = "party.CustomUser"
+AUTH_USER_MODEL = "party.User"
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

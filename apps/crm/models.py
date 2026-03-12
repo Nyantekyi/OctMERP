@@ -28,8 +28,9 @@ class Territory(TenantAwareModel):
     """Geographic or market segment assigned to a sales team."""
     name = models.CharField(_("Territory Name"), max_length=100, unique=True)
     description = models.TextField(blank=True)
-    countries = models.ManyToManyField(
-        "contact.Country", blank=True, verbose_name=_("Countries"), related_name="territories"
+    city = models.ForeignKey(
+        "contact.City", on_delete=models.SET_NULL, null=True, blank=True,
+        verbose_name=_("City"), related_name="territories"
     )
     branch = models.ForeignKey(
         "department.Branch", on_delete=models.SET_NULL, null=True, blank=True, related_name="territories"
@@ -81,9 +82,10 @@ class SaleMember(TenantAwareModel):
         ("support", _("Sales Support")),
     ]
 
+    id = None
     team = models.ForeignKey(SaleTeam, on_delete=models.CASCADE, related_name="members")
-    staff = models.ForeignKey(
-        "party.StaffProfile", on_delete=models.CASCADE, related_name="sale_memberships"
+    staff = models.OneToOneField(
+        "party.StaffProfile", on_delete=models.CASCADE, primary_key=True, related_name="sale_membership"
     )
     role = models.CharField(_("Role"), max_length=20, choices=ROLE_CHOICES, default="sales_rep")
     joined_on = models.DateField(_("Joined Team"), auto_now_add=True)
@@ -91,7 +93,6 @@ class SaleMember(TenantAwareModel):
     class Meta:
         verbose_name = _("Sale Team Member")
         verbose_name_plural = _("Sale Team Members")
-        unique_together = ("team", "staff")
 
     def __str__(self):
         return f"{self.staff} ({self.role}) — {self.team}"

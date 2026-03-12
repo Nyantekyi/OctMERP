@@ -100,7 +100,7 @@ class AgentTask(TenantAwareModel):
 
     agent = models.ForeignKey(AgentDefinition, on_delete=models.CASCADE, related_name="tasks")
     initiated_by = models.ForeignKey(
-        "party.CustomUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="agent_tasks"
+        "party.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="agent_tasks"
     )
     # Triggered by a schedule or an alert → nullable
     schedule = models.ForeignKey(
@@ -176,7 +176,7 @@ class AgentMemory(TenantAwareModel):
     agent = models.ForeignKey(AgentDefinition, on_delete=models.CASCADE, related_name="memories")
     # Optional scoping to a specific user session
     user = models.ForeignKey(
-        "party.CustomUser", on_delete=models.SET_NULL, null=True, blank=True, related_name="agent_memories"
+        "party.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="agent_memories"
     )
     key = models.CharField(_("Key"), max_length=200)
     value = models.JSONField(_("Value"), default=dict)
@@ -240,7 +240,7 @@ class AgentAlert(TenantAwareModel):
 
     # Who gets notified when alert fires
     notify_users = models.ManyToManyField(
-        "party.CustomUser", blank=True, related_name="watched_agent_alerts"
+        "party.User", blank=True, related_name="watched_agent_alerts"
     )
     notification_template = models.ForeignKey(
         "notifications.NotificationTemplate", on_delete=models.SET_NULL, null=True, blank=True,
@@ -305,7 +305,7 @@ class AgentFeedback(TenantAwareModel):
     """
     task = models.OneToOneField(AgentTask, on_delete=models.CASCADE, related_name="feedback")
     rated_by = models.ForeignKey(
-        "party.CustomUser", on_delete=models.SET_NULL, null=True, related_name="agent_feedback"
+        "party.User", on_delete=models.SET_NULL, null=True, related_name="agent_feedback"
     )
     rating = models.PositiveSmallIntegerField(
         _("Rating (1-5)"), choices=[(i, str(i)) for i in range(1, 6)]

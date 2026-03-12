@@ -53,7 +53,7 @@ class WorkflowStep(TenantAwareModel):
         "auth.Group", on_delete=models.SET_NULL, null=True, blank=True
     )
     assigned_user = models.ForeignKey(
-        "party.CustomUser", on_delete=models.SET_NULL, null=True, blank=True
+        "party.User", on_delete=models.SET_NULL, null=True, blank=True
     )
     requires_all = models.BooleanField(
         _("Requires All Approvers"), default=False,
@@ -95,7 +95,7 @@ class WorkflowInstance(TenantAwareModel):
         WorkflowStep, on_delete=models.SET_NULL, null=True, blank=True, related_name="active_instances"
     )
     initiated_by = models.ForeignKey(
-        "party.CustomUser", on_delete=models.PROTECT, related_name="initiated_workflows"
+        "party.User", on_delete=models.PROTECT, related_name="initiated_workflows"
     )
 
     class Meta:
@@ -116,7 +116,7 @@ class WorkflowAction(TenantAwareModel):
     instance = models.ForeignKey(WorkflowInstance, on_delete=models.CASCADE, related_name="actions")
     step = models.ForeignKey(WorkflowStep, on_delete=models.PROTECT, related_name="actions")
     actor = models.ForeignKey(
-        "party.CustomUser", on_delete=models.PROTECT, related_name="workflow_actions"
+        "party.User", on_delete=models.PROTECT, related_name="workflow_actions"
     )
     action = models.CharField(max_length=20, choices=ACTION_CHOICES)
     comment = models.TextField(blank=True)

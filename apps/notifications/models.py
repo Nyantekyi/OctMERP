@@ -106,7 +106,7 @@ class Notification(TenantAwareModel):
     CHANNEL_CHOICES = NotificationTemplate.CHANNEL_CHOICES
 
     recipient = models.ForeignKey(
-        "party.CustomUser", on_delete=models.CASCADE, related_name="notifications"
+        "party.User", on_delete=models.CASCADE, related_name="notifications"
     )
     channel = models.CharField(_("Channel"), max_length=10, choices=CHANNEL_CHOICES)
     template = models.ForeignKey(
@@ -158,7 +158,7 @@ class NotificationPreference(TenantAwareModel):
     Absent rows default to True (opted in).
     """
     user = models.ForeignKey(
-        "party.CustomUser", on_delete=models.CASCADE, related_name="notification_preferences"
+        "party.User", on_delete=models.CASCADE, related_name="notification_preferences"
     )
     event = models.CharField(_("Event"), max_length=50, choices=NotificationTemplate.EVENT_CHOICES)
     channel = models.CharField(_("Channel"), max_length=10, choices=NotificationTemplate.CHANNEL_CHOICES)
@@ -252,7 +252,7 @@ class Announcement(TenantAwareModel):
 class AnnouncementRead(TenantAwareModel):
     """Tracks which users have dismissed/read an announcement."""
     announcement = models.ForeignKey(Announcement, on_delete=models.CASCADE, related_name="reads")
-    user = models.ForeignKey("party.CustomUser", on_delete=models.CASCADE, related_name="announcement_reads")
+    user = models.ForeignKey("party.User", on_delete=models.CASCADE, related_name="announcement_reads")
     read_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

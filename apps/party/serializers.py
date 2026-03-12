@@ -174,25 +174,27 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 # ─────────────────────────────────────────────────────────────────────────────
 
 class StaffProfileSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(source="pk", read_only=True)
     user = UserLightSerializer(read_only=True)
     branches_info = serializers.SerializerMethodField()
 
     class Meta:
         model = StaffProfile
         fields = [
-            "id", "user", "is_manager", "branches", "branches_info",
+            "id", "user", "is_manager", "branches", "branches_info", "accounts",
             "department", "occupation",
             "employee_id", "date_of_birth", "hire_date", "national_id",
             "emergency_contact_name", "emergency_contact_phone",
             "created_at", "updated_at",
         ]
-        read_only_fields = ["id", "staff_account", "credit_sale_account", "created_at", "updated_at"]
+        read_only_fields = ["id", "accounts", "created_at", "updated_at"]
 
     def get_branches_info(self, obj):
         return [{"id": str(b.id), "name": b.name} for b in obj.branches.all()]
 
 
 class ClientProfileSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(source="pk", read_only=True)
     user = UserLightSerializer(read_only=True)
 
     class Meta:
@@ -207,6 +209,7 @@ class ClientProfileSerializer(serializers.ModelSerializer):
 
 
 class SupplierProfileSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(source="pk", read_only=True)
     user = UserLightSerializer(read_only=True)
 
     class Meta:
@@ -221,6 +224,7 @@ class SupplierProfileSerializer(serializers.ModelSerializer):
 
 
 class AgentProfileSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(source="pk", read_only=True)
     user = UserLightSerializer(read_only=True)
 
     class Meta:

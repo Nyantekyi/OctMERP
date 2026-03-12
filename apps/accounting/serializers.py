@@ -45,7 +45,7 @@ class AccountSerializer(serializers.ModelSerializer):
     class Meta:
         model = Account
         fields = [
-            "id", "acc_number", "name",
+            "id", "acc_number", "currency",
             "account_type", "account_type_name",
             "content_type", "object_id",
             "notes", "running_balance",
@@ -66,7 +66,7 @@ class TransactionDocSerializer(serializers.ModelSerializer):
 
 
 class TransactionSerializer(serializers.ModelSerializer):
-    account_name = serializers.CharField(source="account.name", read_only=True)
+    account_name = serializers.CharField(source="account.account_type.name", read_only=True)
     account_number = serializers.IntegerField(source="account.acc_number", read_only=True)
 
     class Meta:
@@ -87,6 +87,7 @@ class TaxSerializer(serializers.ModelSerializer):
         fields = [
             "id", "name", "description", "effective_date",
             "is_tax_recoverable", "tax_type", "tax",
+            "min_tax_amount", "max_tax_amount",
             "min_taxable_amount", "max_taxable_amount",
             "is_active", "created_at", "updated_at",
         ]

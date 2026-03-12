@@ -60,9 +60,9 @@ class AccountViewSet(viewsets.ModelViewSet):
     queryset = Account.objects.select_related("account_type")
     serializer_class = AccountSerializer
     permission_classes = [IsTenantUser]
-    filterset_fields = ["account_type", "is_active"]
-    search_fields = ["name", "acc_number"]
-    ordering_fields = ["acc_number", "name"]
+    filterset_fields = ["account_type", "currency", "is_active"]
+    search_fields = ["acc_number", "account_type__name"]
+    ordering_fields = ["acc_number", "account_type__name", "currency"]
 
     @action(detail=True, methods=["get"])
     def balance(self, request, pk=None):

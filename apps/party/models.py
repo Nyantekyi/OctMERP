@@ -4,7 +4,7 @@ apps/party/models.py
 User management and profile models.
 
 Hierarchy:
-    CustomUser (AbstractBaseUser + PermissionsMixin)
+    User (AbstractBaseUser + PermissionsMixin)
       ├── StaffProfile   (branches M2M, is_manager)
       ├── ClientProfile  (department FK → apps.department)
       └── SupplierProfile(department FK → apps.department)
@@ -54,7 +54,7 @@ class Occupation(TimeStampedModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Custom User
+# User
 # ─────────────────────────────────────────────────────────────────────────────
 
 class UserType(models.TextChoices):
@@ -65,7 +65,7 @@ class UserType(models.TextChoices):
     AGENT    = "agent",    _("AI Agent")
 
 
-class CustomUserManager(BaseUserManager):
+class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError(_("Email address is required."))
@@ -87,7 +87,7 @@ class CustomUserManager(BaseUserManager):
         return self.create_user(email, password, **extra_fields)
 
 
-class CustomUser(AbstractBaseUser, PermissionsMixin):
+class User(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(_("Email Address"), unique=True)
     first_name = models.CharField(_("First Name"), max_length=150)
@@ -109,7 +109,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["first_name", "last_name"]
 
-    objects = CustomUserManager()
+    objects = UserManager()
 
     class Meta:
         verbose_name = _("User")
@@ -136,8 +136,12 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
 class StaffProfile(TenantAwareModel):
     """Extended profile for staff users. Created automatically via post_save."""
+    id = None
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="staff_profile"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="staff_profile",
+        primary_key=True,
     )
     is_manager = models.BooleanField(_("Is Manager?"), default=False)
     branches = models.ManyToManyField(
@@ -150,22 +154,15 @@ class StaffProfile(TenantAwareModel):
     occupation = models.ForeignKey(
         Occupation, verbose_name=_("Occupation"), on_delete=models.SET_NULL, null=True, blank=True
     )
-    # Accounting link — set via post_save in accounting app
-    staff_account = models.ForeignKey(
+    # Accounting links — set via post_save in accounting app.
+    # Includes payroll expense and the staff-loan receivable account
+    # (previously represented by credit_sale_account).
+    accounts = models.ManyToManyField(
         "accounting.Account",
-        verbose_name=_("Payroll Account"),
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
+        verbose_name=_("Accounts"),
+        blank=True,
         editable=False,
-        related_name="staff_payroll_accounts",
-    )
-    credit_sale_account = models.ForeignKey(
-        "accounting.Account",
-        verbose_name=_("AR Account"),
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        editable=False,
-        related_name="staff_ar_accounts",
+        related_name="staff_profiles",
     )
     employee_id = models.CharField(_("Employee ID"), max_length=50, blank=True, null=True, unique=True)
     date_of_birth = models.DateField(_("Date of Birth"), blank=True, null=True)
@@ -188,8 +185,12 @@ class StaffProfile(TenantAwareModel):
 
 class ClientProfile(TenantAwareModel):
     """Extended profile for client (customer) users."""
+    id = None
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="client_profile"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="client_profile",
+        primary_key=True,
     )
     department = models.ForeignKey(
         "department.Department", verbose_name=_("Assigned Department"),
@@ -240,8 +241,12 @@ class ClientProfile(TenantAwareModel):
 
 class SupplierProfile(TenantAwareModel):
     """Extended profile for supplier users."""
+    id = None
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="supplier_profile"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="supplier_profile",
+        primary_key=True,
     )
     department = models.ForeignKey(
         "department.Department", verbose_name=_("Assigned Department"),
@@ -287,7 +292,7 @@ class SupplierProfile(TenantAwareModel):
 class AgentProfile(TenantAwareModel):
     """
     Extended profile for AI-agent users.  Created automatically via post_save
-    when CustomUser.user_type == "agent".
+    when User.user_type == "agent".
     """
     AGENT_TYPE_CHOICES = [
         ("monitor", _("Monitor")),
@@ -301,8 +306,12 @@ class AgentProfile(TenantAwareModel):
         ("error", _("Error")),
     ]
 
+    id = None
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="agent_profile"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="agent_profile",
+        primary_key=True,
     )
     agent_type = models.CharField(_("Agent Type"), max_length=30, choices=AGENT_TYPE_CHOICES, default="assistant")
     capabilities = models.JSONField(_("Capabilities"), default=list, blank=True)
