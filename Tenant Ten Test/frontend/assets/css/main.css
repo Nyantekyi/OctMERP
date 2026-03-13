@@ -1,0 +1,56 @@
+:root {
+  --bg: #f4f1ea;
+  --text: #1f2a30;
+  --panel: #fffef9;
+  --border: #d7d2c4;
+  --accent: #0c6e68;
+  --error: #b22d2d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top right, #e3ece9, #f4f1ea 60%);
+  color: var(--text);
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+}
+
+.page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem;
+}
+
+.hero h1 {
+  margin-top: 0;
+}
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.error {
+  color: var(--error);
+}
+
+ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
