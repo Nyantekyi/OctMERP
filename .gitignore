@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.env
+.pytest_cache/
+.coverage
+backend/db.sqlite3
+backend/media/
+frontend/.nuxt/
+frontend/.output/
+frontend/node_modules/
