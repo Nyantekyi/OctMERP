@@ -14,8 +14,8 @@
               <div class="space-y-4">
                 <h1 class="headline">ERP frontend scaffold</h1>
                 <p class="copy">
-                  The Nuxt project is prepared with Nuxt UI components and connected
-                  to the Django REST API base URL.
+                  The Nuxt project is prepared with Nuxt UI components and a
+                  tenant-aware server API layer.
                 </p>
               </div>
 
@@ -47,8 +47,8 @@
 
               <div class="space-y-4">
                 <div>
-                  <p class="meta-label">API base</p>
-                  <p class="meta-value">{{ apiBase }}</p>
+                  <p class="meta-label">Health route</p>
+                  <p class="meta-value">{{ healthUrl }}</p>
                 </div>
 
                 <USeparator />
@@ -56,7 +56,7 @@
                 <div class="checklist">
                   <p>Nuxt UI module enabled</p>
                   <p>Starter shell rendered with UI components</p>
-                  <p>Backend integration target configured</p>
+                  <p>Tenant-aware server routes configured</p>
                 </div>
               </div>
             </UCard>
@@ -68,9 +68,7 @@
 </template>
 
 <script setup lang="ts">
-const config = useRuntimeConfig()
-const apiBase = config.public.apiBase
-const healthUrl = `${apiBase}/health/`
+const healthUrl = '/api/health'
 </script>
 
 <style scoped>

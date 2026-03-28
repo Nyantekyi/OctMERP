@@ -52,3 +52,20 @@ class CompanyApiAndAuthTests(APITestCase):
         response = self.client.get('/api/company/companies/')
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.data), 1)
+
+    def test_tenant_resolution_reports_known_and_unknown_domains(self):
+        known_response = self.client.get('/api/tenant/resolve/?domain=localhost', HTTP_HOST='localhost')
+        self.assertEqual(known_response.status_code, 200)
+        self.assertTrue(known_response.data['recognized'])
+        self.assertEqual(known_response.data['tenant']['schema_name'], 'public')
+
+        www_response = self.client.get('/api/tenant/resolve/?domain=www.localhost', HTTP_HOST='localhost')
+        self.assertEqual(www_response.status_code, 200)
+        self.assertTrue(www_response.data['recognized'])
+        self.assertEqual(www_response.data['domain'], 'localhost')
+        self.assertEqual(www_response.data['tenant']['schema_name'], 'public')
+
+        unknown_response = self.client.get('/api/tenant/resolve/?domain=unknown.example.com', HTTP_HOST='localhost')
+        self.assertEqual(unknown_response.status_code, 200)
+        self.assertFalse(unknown_response.data['recognized'])
+        self.assertIsNone(unknown_response.data['tenant']['schema_name'])

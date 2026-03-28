@@ -116,6 +116,7 @@ TENANT_MODEL = 'company.Company'
 TENANT_DOMAIN_MODEL = 'company.Domain'
 PUBLIC_SCHEMA_NAME = 'public'
 PUBLIC_SCHEMA_URLCONF = 'config.urls'
+USE_X_FORWARDED_HOST = True
 PG_EXTRA_SEARCH_PATHS = []
 DATABASE_ROUTERS = ['django_tenants.routers.TenantSyncRouter']
 SHOW_PUBLIC_IF_NO_TENANT_FOUND = True

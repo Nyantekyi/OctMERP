@@ -13,7 +13,7 @@ class Country(TimeStampedUUIDMixin):
     iso3 = models.CharField(_('ISO3'), max_length=3, blank=True, null=True, unique=True)
     iso2 = models.CharField(_('ISO2'), max_length=2, blank=True, null=True, unique=True)
     numeric_code = models.CharField(_('Numeric Code'), max_length=6, unique=True)
-    phone_code = models.CharField(_('Phone Code'), max_length=5, blank=True, null=True)
+    phone_code = models.CharField(_('Phone Code'), max_length=20, blank=True, null=True)
     currency = models.CharField(_('Currency'), max_length=3, blank=True, null=True)
     currency_name = models.CharField(_('Currency Name'), max_length=50, blank=True, null=True)
     lat = models.DecimalField(_('Latitude'), max_digits=10, decimal_places=8, blank=True, null=True)
